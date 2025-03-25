@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ const ProductList: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -24,6 +25,14 @@ const ProductList: React.FC = () => {
       navigate("/login");
     }
   }, [isAuthenticated, navigate]);
+
+  // Handle search param from URL
+  useEffect(() => {
+    const searchFromUrl = searchParams.get("search");
+    if (searchFromUrl) {
+      setSearchQuery(searchFromUrl);
+    }
+  }, [searchParams]);
 
   // Load products
   useEffect(() => {
@@ -138,9 +147,10 @@ const ProductList: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredProducts.map((product) => (
                 <ProductCard
-                  key={product.id}
+                  key={product.product_code} // Changed from id to product_code to fix unique key issues
                   product={product}
                   onDownloadQR={handleDownloadQR}
+                  onImageUpdate={loadProducts}
                 />
               ))}
             </div>

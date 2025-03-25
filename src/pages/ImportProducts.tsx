@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { Loader, FilePlus2, FileUp, PackageCheck, AlertCircle } from "lucide-react";
 import FileUploader from "@/components/FileUploader";
-import { processExcelFile, getProducts, saveProducts } from "@/services/productService";
+import { processExcelFile, getProducts, saveProducts, saveProductImage, processImageZip } from "@/services/productService";
 import { Product } from "@/components/ProductCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -81,12 +81,24 @@ const ImportProducts: React.FC = () => {
       
       // Handle ZIP file with images if provided
       if (zipFile) {
-        // This is a placeholder for the actual ZIP processing
-        toast.info("Processing image ZIP file...");
-        
-        // In a real implementation, you would process the ZIP file
-        // For now, we just simulate a delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+          toast.info("Processing image ZIP file...");
+          const imageMap = await processImageZip(zipFile);
+          
+          if (imageMap.size > 0) {
+            // Save each image to localStorage
+            for (const [productCode, imageDataUrl] of imageMap.entries()) {
+              saveProductImage(productCode, imageDataUrl);
+            }
+            
+            toast.success(`Imported ${imageMap.size} images from ZIP file`);
+          } else {
+            toast.warning("No valid images found in ZIP file");
+          }
+        } catch (zipError) {
+          console.error('Error processing ZIP:', zipError);
+          toast.error("Failed to process ZIP file");
+        }
       }
       
       toast.success(`Successfully imported ${mergedProducts.length} products`);
@@ -144,7 +156,7 @@ const ImportProducts: React.FC = () => {
               </CardContent>
               <CardFooter className="flex flex-col space-y-2">
                 <p className="text-xs text-muted-foreground w-full">
-                  The Excel file should contain columns: Sno, product_code, dimensions, price, cbm, description
+                  The Excel file should contain columns: Sno, product_code, dimensions, breadth, height, price, cbm, description
                 </p>
               </CardFooter>
             </Card>
@@ -168,7 +180,7 @@ const ImportProducts: React.FC = () => {
               </CardContent>
               <CardFooter>
                 <p className="text-xs text-muted-foreground">
-                  Image files should be named with the corresponding product_code.
+                  Image files should be named with the corresponding product_code (e.g., ABC123.jpg).
                 </p>
               </CardFooter>
             </Card>

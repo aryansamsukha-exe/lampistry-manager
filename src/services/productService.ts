@@ -2,6 +2,7 @@
 import { Product } from "@/components/ProductCard";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 
 // Local storage keys
 const PRODUCTS_STORAGE_KEY = 'lampqr_products';
@@ -91,11 +92,22 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
         const snoIndex = findColumnIndex(['sno', 's.no', 'serial', 'serial no', 'serial number']);
         const codeIndex = findColumnIndex(['product_code', 'productcode', 'code', 'product code']);
         const dimIndex = findColumnIndex(['dimensions', 'dimension', 'size', 'measurements']);
+        const breadthIndex = findColumnIndex(['breadth', 'width', 'b', 'w']);
+        const heightIndex = findColumnIndex(['height', 'h']);
         const priceIndex = findColumnIndex(['price', 'cost', 'amount', 'value']);
         const cbmIndex = findColumnIndex(['cbm', 'cubic meter', 'volume']);
         const descIndex = findColumnIndex(['description', 'desc', 'details', 'info']);
         
-        console.log('Column indexes:', { snoIndex, codeIndex, dimIndex, priceIndex, cbmIndex, descIndex });
+        console.log('Column indexes:', { 
+          snoIndex, 
+          codeIndex, 
+          dimIndex, 
+          breadthIndex, 
+          heightIndex,
+          priceIndex, 
+          cbmIndex, 
+          descIndex 
+        });
         
         if (snoIndex === -1 || codeIndex === -1) {
           throw new Error('Required columns not found. Excel file must have at least "Sno" and "product_code" columns.');
@@ -134,6 +146,15 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
             description: descIndex >= 0 ? String(row[descIndex] || '') : '',
           };
           
+          // Add breadth and height if available
+          if (breadthIndex >= 0 && row[breadthIndex] !== undefined) {
+            product.breadth = String(row[breadthIndex]);
+          }
+          
+          if (heightIndex >= 0 && row[heightIndex] !== undefined) {
+            product.height = String(row[heightIndex]);
+          }
+          
           products.push(product);
         }
         
@@ -162,14 +183,65 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
 
 // Process zip file with images
 export const processImageZip = async (file: File): Promise<Map<string, string>> => {
-  // In a real implementation, you would use a library like JSZip
-  // This is a simplified mock version
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // Mock result - in real implementation, extract images and create object URLs
-      const mockImageMap = new Map<string, string>();
-      resolve(mockImageMap);
-    }, 1000);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = async (e) => {
+      try {
+        const zip = new JSZip();
+        const result = await zip.loadAsync(e.target?.result as ArrayBuffer);
+        const imageMap = new Map<string, string>();
+        
+        // Process each file in the ZIP
+        const promises = Object.keys(result.files).map(async (fileName) => {
+          const zipEntry = result.files[fileName];
+          
+          // Skip directories
+          if (zipEntry.dir) return;
+          
+          // Get product code from filename (remove extension)
+          const fileNameWithoutPath = fileName.split('/').pop() || '';
+          const productCode = fileNameWithoutPath.split('.')[0];
+          
+          // Skip if no product code or not an image
+          if (!productCode || !fileNameWithoutPath.match(/\.(jpe?g|png|gif|bmp|webp)$/i)) {
+            return;
+          }
+          
+          try {
+            // Get file data
+            const fileData = await zipEntry.async('blob');
+            
+            // Convert to base64
+            const reader = new FileReader();
+            reader.readAsDataURL(fileData);
+            
+            return new Promise((resolveFile) => {
+              reader.onload = (e) => {
+                if (e.target?.result) {
+                  imageMap.set(productCode, e.target.result.toString());
+                }
+                resolveFile(null);
+              };
+            });
+          } catch (error) {
+            console.error(`Error processing file ${fileName}:`, error);
+          }
+        });
+        
+        await Promise.all(promises);
+        resolve(imageMap);
+      } catch (error) {
+        console.error('Error processing ZIP file:', error);
+        reject(new Error('Failed to process ZIP file. Make sure it contains valid images.'));
+      }
+    };
+    
+    reader.onerror = () => {
+      reject(new Error('Failed to read ZIP file'));
+    };
+    
+    reader.readAsArrayBuffer(file);
   });
 };
 
@@ -178,8 +250,20 @@ export const searchProducts = (products: Product[], query: string): Product[] =>
   if (!query.trim()) return products;
   
   const lowerQuery = query.toLowerCase().trim();
-  return products.filter((product) => 
-    product.product_code.toLowerCase().includes(lowerQuery) ||
-    product.description.toLowerCase().includes(lowerQuery)
-  );
+  
+  // Debug search
+  console.log('Searching for:', lowerQuery);
+  console.log('Products to search:', products.length);
+  
+  const results = products.filter((product) => {
+    const codeMatch = product.product_code.toLowerCase().includes(lowerQuery);
+    const descMatch = product.description.toLowerCase().includes(lowerQuery);
+    
+    console.log(`Product ${product.product_code}: code match = ${codeMatch}, desc match = ${descMatch}`);
+    
+    return codeMatch || descMatch;
+  });
+  
+  console.log('Search results:', results.length);
+  return results;
 };

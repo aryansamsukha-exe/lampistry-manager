@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { QrCode, Download, Package, Loader } from "lucide-react";
 import { getProducts, getProductImage } from "@/services/productService";
-import { generateQRCode, downloadQRCode, downloadAllQRCodes } from "@/services/qrService";
+import { createQRWithText, downloadQRCode, downloadAllQRCodes } from "@/services/qrService";
 import { Product } from "@/components/ProductCard";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 
@@ -53,7 +53,7 @@ const QRCodes: React.FC = () => {
       await Promise.all(
         enhancedProducts.map(async (product) => {
           try {
-            const qrDataUrl = await generateQRCode(product);
+            const qrDataUrl = await createQRWithText(product);
             qrCodesMap.set(product.id, qrDataUrl);
           } catch (error) {
             console.error(`Error generating QR code for ${product.product_code}:`, error);
@@ -137,15 +137,17 @@ const QRCodes: React.FC = () => {
           ) : products.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {products.map((product) => (
-                <Card key={product.id}>
+                <Card key={product.product_code}>
                   <CardHeader>
                     <CardTitle className="text-lg">{product.product_code}</CardTitle>
                     <CardDescription>
-                      {product.dimensions} | ${product.price.toFixed(2)}
+                      {product.dimensions}
+                      {product.breadth && product.height && ` | ${product.breadth}×${product.height}`}
+                      {' | '}${product.price.toFixed(2)}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex justify-center">
-                    <div className="w-48 h-48 bg-white p-2 rounded-md shadow-sm">
+                    <div className="w-48 bg-white p-2 rounded-md shadow-sm">
                       {qrCodes.has(product.id) ? (
                         <AspectRatio ratio={1}>
                           <img

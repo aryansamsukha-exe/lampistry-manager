@@ -2,16 +2,21 @@
 import React, { useState } from "react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { QrCode, Download, ImageIcon, Info } from "lucide-react";
+import { QrCode, Download, ImageIcon, Info, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
+import FileUploader from "@/components/FileUploader";
+import { saveProductImage } from "@/services/productService";
+import { toast } from "sonner";
 
 export type Product = {
   id: string;
   sno: number;
   product_code: string;
   dimensions: string;
+  breadth?: string;  // Added breadth field
+  height?: string;   // Added height field
   price: number;
   cbm: string;
   description: string;
@@ -21,17 +26,38 @@ export type Product = {
 interface ProductCardProps {
   product: Product;
   onDownloadQR: (product: Product) => void;
+  onImageUpdate?: () => void; // Callback to refresh product list after image update
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImageUpdate }) => {
   const [showDetails, setShowDetails] = useState(false);
+  const [showImageUpload, setShowImageUpload] = useState(false);
   
   const productImage = product.imageUrl || "/placeholder.svg";
   
+  const handleImageUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        const imageDataUrl = e.target.result.toString();
+        saveProductImage(product.product_code, imageDataUrl);
+        toast.success("Image uploaded successfully");
+        setShowImageUpload(false);
+        if (onImageUpdate) {
+          onImageUpdate();
+        }
+      }
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read image file");
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <>
       <Card className="overflow-hidden transition-all hover:shadow-md">
-        <CardHeader className="p-0">
+        <CardHeader className="p-0 relative">
           <div className="image-container w-full">
             <AspectRatio ratio={4/3} className="bg-secondary">
               <img
@@ -43,6 +69,14 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR }) => {
                 }}
               />
             </AspectRatio>
+            <Button 
+              variant="ghost" 
+              size="icon"
+              className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm hover:bg-background/90"
+              onClick={() => setShowImageUpload(true)}
+            >
+              <Upload className="h-4 w-4" />
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="p-4">
@@ -116,6 +150,20 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR }) => {
               <div className="font-medium">Dimensions:</div>
               <div>{product.dimensions}</div>
               
+              {product.breadth && (
+                <>
+                  <div className="font-medium">Breadth:</div>
+                  <div>{product.breadth}</div>
+                </>
+              )}
+              
+              {product.height && (
+                <>
+                  <div className="font-medium">Height:</div>
+                  <div>{product.height}</div>
+                </>
+              )}
+              
               <div className="font-medium">Price:</div>
               <div>${product.price.toFixed(2)}</div>
               
@@ -135,6 +183,22 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR }) => {
               <Download className="h-4 w-4" />
               Download QR Code
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showImageUpload} onOpenChange={setShowImageUpload}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Upload Product Image</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <FileUploader
+              onFileSelect={handleImageUpload}
+              accept="image/*"
+              label={`Upload image for ${product.product_code}`}
+              maxSize={5} // 5MB max
+            />
           </div>
         </DialogContent>
       </Dialog>

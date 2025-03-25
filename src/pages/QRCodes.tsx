@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
@@ -20,14 +19,12 @@ const QRCodes: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
-  // Redirect if not authenticated
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/login");
     }
   }, [isAuthenticated, navigate]);
 
-  // Load products and generate QR codes
   useEffect(() => {
     if (isAuthenticated) {
       loadProductsAndGenerateQRs();
@@ -37,10 +34,8 @@ const QRCodes: React.FC = () => {
   const loadProductsAndGenerateQRs = async () => {
     setIsLoading(true);
     try {
-      // Get products from localStorage
       const loadedProducts = getProducts();
       
-      // Enhance products with image URLs if available
       const enhancedProducts = loadedProducts.map(product => ({
         ...product,
         imageUrl: getProductImage(product.product_code)
@@ -48,7 +43,6 @@ const QRCodes: React.FC = () => {
       
       setProducts(enhancedProducts);
 
-      // Generate QR codes for all products
       const qrCodesMap = new Map<string, string>();
       await Promise.all(
         enhancedProducts.map(async (product) => {
@@ -97,7 +91,7 @@ const QRCodes: React.FC = () => {
   };
 
   if (!isAuthenticated) {
-    return null; // Don't render anything while redirecting
+    return null;
   }
 
   return (
@@ -142,7 +136,7 @@ const QRCodes: React.FC = () => {
                     <CardTitle className="text-lg">{product.product_code}</CardTitle>
                     <CardDescription>
                       {product.dimensions}
-                      {product.breadth && product.height && ` | ${product.breadth}×${product.height}`}
+                      {product.width && product.height && ` | ${product.width}×${product.height}`}
                       {' | '}${product.price.toFixed(2)}
                     </CardDescription>
                   </CardHeader>

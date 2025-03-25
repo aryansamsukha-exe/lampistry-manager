@@ -6,15 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { Loader, FilePlus2, FileUp, PackageCheck } from "lucide-react";
+import { Loader, FilePlus2, FileUp, PackageCheck, AlertCircle } from "lucide-react";
 import FileUploader from "@/components/FileUploader";
 import { processExcelFile, getProducts, saveProducts } from "@/services/productService";
 import { Product } from "@/components/ProductCard";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const ImportProducts: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [zipFile, setZipFile] = useState<File | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -27,6 +29,7 @@ const ImportProducts: React.FC = () => {
 
   const handleExcelSelect = (file: File) => {
     setExcelFile(file);
+    setErrorMessage(null); // Clear any previous errors
   };
 
   const handleZipSelect = (file: File) => {
@@ -40,12 +43,19 @@ const ImportProducts: React.FC = () => {
     }
 
     setIsLoading(true);
+    setErrorMessage(null);
+    
     try {
+      // Log file details for debugging
+      console.log('Processing file:', excelFile.name, excelFile.type, `${(excelFile.size / 1024).toFixed(2)} KB`);
+      
       // Process Excel file
       const importedProducts = await processExcelFile(excelFile);
       
       if (importedProducts.length === 0) {
+        setErrorMessage("No products found in the Excel file. Please check the file format.");
         toast.error("No products found in the Excel file");
+        setIsLoading(false);
         return;
       }
 
@@ -70,8 +80,6 @@ const ImportProducts: React.FC = () => {
       saveProducts(mergedProducts);
       
       // Handle ZIP file with images if provided
-      // In a real app, you would process the ZIP file to extract images
-      // and associate them with products
       if (zipFile) {
         // This is a placeholder for the actual ZIP processing
         toast.info("Processing image ZIP file...");
@@ -85,7 +93,9 @@ const ImportProducts: React.FC = () => {
       navigate("/products");
     } catch (error) {
       console.error('Import error:', error);
-      toast.error(error instanceof Error ? error.message : "Failed to import products");
+      const errorMsg = error instanceof Error ? error.message : "Failed to import products";
+      setErrorMessage(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setIsLoading(false);
     }
@@ -106,6 +116,13 @@ const ImportProducts: React.FC = () => {
               Import your product data from Excel and upload product images.
             </p>
           </div>
+
+          {errorMessage && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{errorMessage}</AlertDescription>
+            </Alert>
+          )}
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>

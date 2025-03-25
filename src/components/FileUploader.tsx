@@ -32,18 +32,51 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   };
 
   const validateFile = (file: File): boolean => {
-    // Check file type
-    if (!accept.split(",").some(type => {
-      return type.trim() === file.type || 
-             (type.includes("*") && file.type.startsWith(type.replace("*", "")));
-    })) {
-      toast.error(`File type not supported. Please upload ${accept} files.`);
-      return false;
-    }
-
     // Check file size
     if (file.size > maxSize * 1024 * 1024) {
       toast.error(`File is too large. Maximum size is ${maxSize}MB.`);
+      return false;
+    }
+
+    // For Excel files, check by both mime type and extension
+    if (accept.includes('.xlsx') || accept.includes('.xls')) {
+      const validExcelTypes = [
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel.sheet.macroEnabled.12',
+        'application/vnd.ms-excel.sheet.binary.macroEnabled.12'
+      ];
+      
+      // Get file extension
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
+      
+      if (
+        (fileExt === 'xlsx' || fileExt === 'xls') || 
+        validExcelTypes.includes(file.type)
+      ) {
+        return true;
+      }
+      
+      toast.error(`Please upload a valid Excel file (.xlsx or .xls).`);
+      return false;
+    }
+    
+    // For other file types, check against the provided accept string
+    if (!accept.split(",").some(type => {
+      type = type.trim();
+      // Check for wildcard MIME types (e.g., "image/*")
+      if (type.includes("*")) {
+        const baseMimeType = type.replace("*", "");
+        return file.type.startsWith(baseMimeType);
+      }
+      // Check for file extensions (e.g., ".pdf")
+      if (type.startsWith(".")) {
+        return file.name.toLowerCase().endsWith(type.toLowerCase());
+      }
+      // Check exact MIME type match
+      return type === file.type;
+    })) {
+      toast.error(`File type not supported. Please upload ${accept} files.`);
       return false;
     }
 
@@ -142,7 +175,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
       </div>
       {selectedFile && (
         <p className="text-sm text-center mt-2 text-muted-foreground">
-          Click "Upload" to continue
+          File selected: {selectedFile.name}
         </p>
       )}
     </div>

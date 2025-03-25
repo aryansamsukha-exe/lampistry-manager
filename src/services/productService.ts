@@ -1,4 +1,3 @@
-
 import { Product } from "@/components/ProductCard";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
@@ -69,7 +68,6 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
         const worksheet = workbook.Sheets[worksheetName];
         
         // Convert to JSON with header: 1 to get array of arrays first
-        // This helps us handle files with different header names or formats
         const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         
         if (rawData.length < 2) {
@@ -91,9 +89,10 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
         
         const snoIndex = findColumnIndex(['sno', 's.no', 'serial', 'serial no', 'serial number']);
         const codeIndex = findColumnIndex(['product_code', 'productcode', 'code', 'product code']);
-        const dimIndex = findColumnIndex(['dimensions', 'dimension', 'size', 'measurements']);
-        const breadthIndex = findColumnIndex(['breadth', 'width', 'b', 'w']);
+        const lengthIndex = findColumnIndex(['length', 'l']);
+        const widthIndex = findColumnIndex(['width', 'w', 'breadth', 'b']);
         const heightIndex = findColumnIndex(['height', 'h']);
+        const dimIndex = findColumnIndex(['dimensions', 'dimension', 'size', 'measurements']);
         const priceIndex = findColumnIndex(['price', 'cost', 'amount', 'value']);
         const cbmIndex = findColumnIndex(['cbm', 'cubic meter', 'volume']);
         const descIndex = findColumnIndex(['description', 'desc', 'details', 'info']);
@@ -101,9 +100,10 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
         console.log('Column indexes:', { 
           snoIndex, 
           codeIndex, 
-          dimIndex, 
-          breadthIndex, 
+          lengthIndex,
+          widthIndex,
           heightIndex,
+          dimIndex, 
           priceIndex, 
           cbmIndex, 
           descIndex 
@@ -140,19 +140,32 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
             id: `product-${Date.now()}-${i}`,
             sno: sno,
             product_code: String(row[codeIndex] || '').trim(),
-            dimensions: dimIndex >= 0 ? String(row[dimIndex] || 'N/A') : 'N/A',
             price: priceIndex >= 0 ? parseFloat(String(row[priceIndex] || '0')) || 0 : 0,
             cbm: cbmIndex >= 0 ? String(row[cbmIndex] || 'N/A') : 'N/A',
             description: descIndex >= 0 ? String(row[descIndex] || '') : '',
           };
           
-          // Add breadth and height if available
-          if (breadthIndex >= 0 && row[breadthIndex] !== undefined) {
-            product.breadth = String(row[breadthIndex]);
+          // Add separate dimensions if available
+          if (lengthIndex >= 0 && row[lengthIndex] !== undefined) {
+            product.length = String(row[lengthIndex]);
+          }
+          
+          if (widthIndex >= 0 && row[widthIndex] !== undefined) {
+            product.width = String(row[widthIndex]);
           }
           
           if (heightIndex >= 0 && row[heightIndex] !== undefined) {
             product.height = String(row[heightIndex]);
+          }
+          
+          // Add legacy dimensions if separate dimensions not available
+          if (dimIndex >= 0 && (!product.length || !product.width || !product.height)) {
+            product.dimensions = String(row[dimIndex] || 'N/A');
+          }
+          
+          // If we have l, w, h but no legacy dimensions, create a calculated dimensions string
+          if (product.length && product.width && product.height && !product.dimensions) {
+            product.dimensions = `${product.length} × ${product.width} × ${product.height}`;
           }
           
           products.push(product);
@@ -245,7 +258,7 @@ export const processImageZip = async (file: File): Promise<Map<string, string>> 
   });
 };
 
-// Search products
+// Search products - Fixed to correctly search by product code
 export const searchProducts = (products: Product[], query: string): Product[] => {
   if (!query.trim()) return products;
   
@@ -256,8 +269,17 @@ export const searchProducts = (products: Product[], query: string): Product[] =>
   console.log('Products to search:', products.length);
   
   const results = products.filter((product) => {
+    // Exact match for product_code gets highest priority
+    if (product.product_code.toLowerCase() === lowerQuery) {
+      console.log(`Exact match found for product: ${product.product_code}`);
+      return true;
+    }
+    
+    // Partial match for product_code
     const codeMatch = product.product_code.toLowerCase().includes(lowerQuery);
-    const descMatch = product.description.toLowerCase().includes(lowerQuery);
+    
+    // Partial match for description
+    const descMatch = product.description && product.description.toLowerCase().includes(lowerQuery);
     
     console.log(`Product ${product.product_code}: code match = ${codeMatch}, desc match = ${descMatch}`);
     
@@ -266,4 +288,10 @@ export const searchProducts = (products: Product[], query: string): Product[] =>
   
   console.log('Search results:', results.length);
   return results;
+};
+
+// Get a product by product code - New helper function
+export const getProductByCode = (productCode: string): Product | undefined => {
+  const products = getProducts();
+  return products.find(p => p.product_code.toLowerCase() === productCode.toLowerCase());
 };

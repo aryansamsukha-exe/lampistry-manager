@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -44,11 +43,20 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         'application/vnd.ms-excel',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'application/vnd.ms-excel.sheet.macroEnabled.12',
-        'application/vnd.ms-excel.sheet.binary.macroEnabled.12'
+        'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
+        'application/octet-stream',
+        'application/binary'
       ];
       
       // Get file extension
       const fileExt = file.name.split('.').pop()?.toLowerCase();
+      
+      console.log('Validating Excel file:', { 
+        name: file.name, 
+        type: file.type, 
+        size: `${(file.size / (1024 * 1024)).toFixed(2)}MB`,
+        extension: fileExt
+      });
       
       if (
         (fileExt === 'xlsx' || fileExt === 'xls') || 

@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
@@ -20,7 +19,6 @@ const ImportProducts: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
-  // Redirect if not authenticated
   React.useEffect(() => {
     if (!isAuthenticated) {
       navigate("/login");
@@ -28,11 +26,21 @@ const ImportProducts: React.FC = () => {
   }, [isAuthenticated, navigate]);
 
   const handleExcelSelect = (file: File) => {
+    console.log('Excel file selected:', { 
+      name: file.name, 
+      type: file.type, 
+      size: `${(file.size / (1024 * 1024)).toFixed(2)}MB` 
+    });
     setExcelFile(file);
-    setErrorMessage(null); // Clear any previous errors
+    setErrorMessage(null);
   };
 
   const handleZipSelect = (file: File) => {
+    console.log('ZIP file selected:', { 
+      name: file.name, 
+      type: file.type, 
+      size: `${(file.size / (1024 * 1024)).toFixed(2)}MB` 
+    });
     setZipFile(file);
   };
 
@@ -46,10 +54,8 @@ const ImportProducts: React.FC = () => {
     setErrorMessage(null);
     
     try {
-      // Log file details for debugging
       console.log('Processing file:', excelFile.name, excelFile.type, `${(excelFile.size / 1024).toFixed(2)} KB`);
       
-      // Process Excel file
       const importedProducts = await processExcelFile(excelFile);
       
       if (importedProducts.length === 0) {
@@ -59,16 +65,16 @@ const ImportProducts: React.FC = () => {
         return;
       }
 
-      // Get existing products (if any)
+      console.log('Successfully imported products:', importedProducts.length);
+      console.log('First product as sample:', importedProducts[0]);
+
       const existingProducts = getProducts();
       
-      // Create a map of existing products by product_code for easy lookup
       const existingProductMap = new Map<string, Product>();
       existingProducts.forEach(product => {
         existingProductMap.set(product.product_code, product);
       });
       
-      // Merge or add new products
       const mergedProducts = importedProducts.map(newProduct => {
         const existingProduct = existingProductMap.get(newProduct.product_code);
         return existingProduct 
@@ -76,19 +82,17 @@ const ImportProducts: React.FC = () => {
           : newProduct;
       });
       
-      // Save the merged products
       saveProducts(mergedProducts);
       
-      // Handle ZIP file with images if provided
       if (zipFile) {
         try {
           toast.info("Processing image ZIP file...");
           const imageMap = await processImageZip(zipFile);
           
           if (imageMap.size > 0) {
-            // Save each image to localStorage
             for (const [productCode, imageDataUrl] of imageMap.entries()) {
               saveProductImage(productCode, imageDataUrl);
+              console.log(`Saved image for product: ${productCode}`);
             }
             
             toast.success(`Imported ${imageMap.size} images from ZIP file`);
@@ -114,7 +118,7 @@ const ImportProducts: React.FC = () => {
   };
 
   if (!isAuthenticated) {
-    return null; // Don't render anything while redirecting
+    return null;
   }
 
   return (

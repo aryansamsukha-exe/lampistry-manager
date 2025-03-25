@@ -14,9 +14,10 @@ export type Product = {
   id: string;
   sno: number;
   product_code: string;
-  dimensions: string;
-  breadth?: string;  // Added breadth field
-  height?: string;   // Added height field
+  dimensions?: string;  // Kept for backward compatibility
+  length?: string;      // Added length field
+  width?: string;       // Added width field (renamed from breadth for consistency)
+  height?: string;      // Height field
   price: number;
   cbm: string;
   description: string;
@@ -54,6 +55,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
     reader.readAsDataURL(file);
   };
 
+  // Format dimensions for display
+  const getDimensionsDisplay = () => {
+    if (product.length && product.width && product.height) {
+      return `${product.length} × ${product.width} × ${product.height}`;
+    } else if (product.dimensions) {
+      return product.dimensions;
+    }
+    return "N/A";
+  };
+
   return (
     <>
       <Card className="overflow-hidden transition-all hover:shadow-md">
@@ -83,7 +94,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
           <CardTitle className="text-lg font-medium mb-2">{product.product_code}</CardTitle>
           <div className="flex justify-between items-center mb-3">
             <span className="text-sm text-muted-foreground">
-              {product.dimensions}
+              {getDimensionsDisplay()}
             </span>
             <span className="font-medium">${product.price.toFixed(2)}</span>
           </div>
@@ -147,13 +158,18 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
               <div className="font-medium">Serial Number:</div>
               <div>{product.sno}</div>
               
-              <div className="font-medium">Dimensions:</div>
-              <div>{product.dimensions}</div>
-              
-              {product.breadth && (
+              {/* Display dimensions separately if available */}
+              {product.length && (
                 <>
-                  <div className="font-medium">Breadth:</div>
-                  <div>{product.breadth}</div>
+                  <div className="font-medium">Length:</div>
+                  <div>{product.length}</div>
+                </>
+              )}
+              
+              {product.width && (
+                <>
+                  <div className="font-medium">Width:</div>
+                  <div>{product.width}</div>
                 </>
               )}
               
@@ -161,6 +177,14 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
                 <>
                   <div className="font-medium">Height:</div>
                   <div>{product.height}</div>
+                </>
+              )}
+              
+              {/* Display legacy dimensions if separate dimensions not available */}
+              {!product.length && !product.width && !product.height && product.dimensions && (
+                <>
+                  <div className="font-medium">Dimensions:</div>
+                  <div>{product.dimensions}</div>
                 </>
               )}
               

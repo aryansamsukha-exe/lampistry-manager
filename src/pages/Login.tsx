@@ -1,31 +1,59 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
-import { QrCode, Loader } from "lucide-react";
+import { QrCode, Loader, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/products");
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) return;
+    setError(null);
+    
+    // Form validation
+    if (!username.trim()) {
+      setError("Username is required");
+      return;
+    }
+    
+    if (!password) {
+      setError("Password is required");
+      return;
+    }
+    
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
 
     setIsLoading(true);
     try {
       await login(username, password);
       navigate("/products");
     } catch (error) {
-      // Error is handled in the auth context
+      // Error is displayed by the auth context via toast
       console.error(error);
+      if (error instanceof Error) {
+        setError(error.message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -42,6 +70,13 @@ const Login: React.FC = () => {
           <p className="mt-2 text-muted-foreground">Sign in to manage your lamp products</p>
         </div>
 
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         <Card className="glass">
           <CardHeader>
             <CardTitle>Sign In</CardTitle>
@@ -57,7 +92,10 @@ const Login: React.FC = () => {
                   id="username"
                   placeholder="Enter your username"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    if (error) setError(null);
+                  }}
                   required
                 />
               </div>
@@ -68,7 +106,10 @@ const Login: React.FC = () => {
                   type="password"
                   placeholder="Enter your password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (error) setError(null);
+                  }}
                   required
                 />
               </div>

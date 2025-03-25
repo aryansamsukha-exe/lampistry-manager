@@ -25,7 +25,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Check if there's a saved user in localStorage
     const savedUser = localStorage.getItem("user");
     if (savedUser) {
-      setUser(JSON.parse(savedUser));
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (error) {
+        console.error("Failed to parse saved user:", error);
+        localStorage.removeItem("user");
+      }
     }
     setIsLoading(false);
   }, []);
@@ -33,21 +38,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (username: string, password: string) => {
     setIsLoading(true);
     try {
+      // Validate input
+      if (!username || !username.trim()) {
+        throw new Error("Username is required");
+      }
+      
+      if (!password) {
+        throw new Error("Password is required");
+      }
+      
+      if (password.length < 6) {
+        throw new Error("Password must be at least 6 characters");
+      }
+      
+      console.log("Login attempt:", { username, passwordLength: password.length });
+      
       // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // In a real app, you would validate with a server
-      // This is just a demo login - in production use proper auth
-      if (username && password.length >= 6) {
-        const newUser = { id: "user-" + Date.now(), username };
-        setUser(newUser);
-        localStorage.setItem("user", JSON.stringify(newUser));
-        toast.success("Logged in successfully!");
-      } else {
-        throw new Error("Invalid credentials");
-      }
+      // This is just a demo login
+      const newUser = { id: "user-" + Date.now(), username };
+      setUser(newUser);
+      localStorage.setItem("user", JSON.stringify(newUser));
+      toast.success("Logged in successfully!");
     } catch (error) {
-      toast.error("Login failed. Please check your credentials.");
+      const errorMessage = error instanceof Error ? error.message : "Login failed. Please check your credentials.";
+      toast.error(errorMessage);
       throw error;
     } finally {
       setIsLoading(false);

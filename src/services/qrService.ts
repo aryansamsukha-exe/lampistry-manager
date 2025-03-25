@@ -4,15 +4,23 @@ import QRCode from "qrcode";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
-// Generate QR code for a product
+// Generate QR code for a product with a proper URL for redirection
 export const generateQRCode = async (product: Product, size = 200): Promise<string> => {
   try {
-    // In a real app, this would be a URL to your product page
-    // For demo purposes, we're encoding the product data in the QR code
+    // Create a proper URL that points to the product details
+    // This will be a relative URL that works when deployed
+    const redirectUrl = `/products?search=${encodeURIComponent(product.product_code)}`;
+    
+    // Store both the redirect URL and basic product data
     const productData = {
+      url: redirectUrl,
       id: product.id,
       code: product.product_code,
       price: product.price,
+      // Include separate dimensions if available
+      length: product.length,
+      width: product.width,
+      height: product.height,
       dimensions: product.dimensions,
     };
     

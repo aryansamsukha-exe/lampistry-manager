@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { supabase } from "@/integrations/supabase/client";
+import { v4 as uuidv4 } from 'uuid';
 
 // Get products for the current user
 export const getProducts = async (): Promise<Product[]> => {
@@ -65,20 +66,20 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
     console.log('Saving products for user:', userId);
     console.log('Number of products to save:', products.length);
     
-    // Delete existing products for this user - use a proper condition
+    // Delete existing products for this user
     const { error: deleteError } = await supabase
       .from('products')
       .delete()
-      .is('id', null); // This condition means "delete nothing" - a safe starting point
+      .eq('user_id', userId);
     
     if (deleteError) {
-      console.error('Error preparing for product import:', deleteError);
+      console.error('Error deleting existing products:', deleteError);
       // Continue with insert anyway
     }
     
     // Insert new products
     const productsToInsert = products.map(product => ({
-      id: product.id,
+      // Don't include id field, let the database generate it
       sno: product.sno,
       product_code: product.product_code,
       dimensions: product.dimensions,
@@ -329,9 +330,9 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
             continue;
           }
           
-          // Create product object
+          // Create product object - Let the database generate UUID
           const product: Product = {
-            id: `product-${Date.now()}-${i}`,
+            id: '', // This will be ignored when inserting
             sno: sno,
             product_code: productCode,
             price: priceIndex >= 0 ? parseFloat(String(row[priceIndex] || '0')) || 0 : 0,

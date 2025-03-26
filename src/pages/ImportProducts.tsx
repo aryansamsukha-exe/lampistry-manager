@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
@@ -79,8 +78,8 @@ const ImportProducts: React.FC = () => {
         await saveProducts(importedProducts);
         
         if (zipFile) {
+          toast.info("Processing image ZIP file...");
           try {
-            toast.info("Processing image ZIP file...");
             const imageMap = await processImageZip(zipFile);
             
             if (imageMap.size > 0) {

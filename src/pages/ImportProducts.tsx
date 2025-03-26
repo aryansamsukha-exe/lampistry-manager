@@ -102,10 +102,11 @@ const ImportProducts: React.FC = () => {
         
         if (zipFile) {
           await handleImageUpload();
+        } else {
+          setProgress(100);
         }
         
         toast.success(`Successfully imported ${importedProducts.length} products`);
-        setProgress(100);
         
         // Give user time to see the 100% progress before navigating
         setTimeout(() => {
@@ -114,8 +115,12 @@ const ImportProducts: React.FC = () => {
         
       } catch (saveError) {
         console.error('Error saving products:', saveError);
-        setErrorMessage("Failed to save some products to the database. Please try again.");
-        toast.error("Failed to save some products to the database");
+        setErrorMessage("Some products were saved, but not all. You can view the imported products on the products page.");
+        toast.warning("Partial import successful. Some products may not have been saved.");
+        // Still navigate to products page to show what was successfully imported
+        setTimeout(() => {
+          navigate("/products");
+        }, 2000);
       }
     } catch (error) {
       console.error('Import error:', error);
@@ -140,6 +145,7 @@ const ImportProducts: React.FC = () => {
 
     setIsImageProcessing(true);
     setErrorMessage(null);
+    setProgress(zipFile && !excelFile ? 0 : 50); // Start at 0 for standalone upload, 50 for combined
     
     try {
       toast.info("Processing image ZIP file...");
@@ -154,9 +160,10 @@ const ImportProducts: React.FC = () => {
             await saveProductImage(productCode, imageDataUrl);
             savedImages++;
             
-            // Update progress for images (from 50% to 100%)
-            const imageProgress = Math.round((savedImages / totalImages) * 50);
-            setProgress(50 + imageProgress);
+            // Update progress (0-100% for standalone, 50-100% for combined)
+            const baseProgress = excelFile ? 50 : 0;
+            const imageProgress = Math.round((savedImages / totalImages) * (100 - baseProgress));
+            setProgress(baseProgress + imageProgress);
             
             if (savedImages % 10 === 0) {
               console.log(`Saved ${savedImages}/${imageMap.size} images so far...`);
@@ -168,6 +175,13 @@ const ImportProducts: React.FC = () => {
         
         console.log(`Completed saving ${savedImages} images`);
         toast.success(`Imported ${savedImages} images from ZIP file`);
+        
+        // Navigate to products page if this was a standalone image upload
+        if (!excelFile) {
+          setTimeout(() => {
+            navigate("/products");
+          }, 1000);
+        }
       } else {
         toast.warning("No valid images found in ZIP file");
       }
@@ -177,6 +191,9 @@ const ImportProducts: React.FC = () => {
       setErrorMessage("Failed to process ZIP file. Please check the file format.");
     } finally {
       setIsImageProcessing(false);
+      if (!excelFile) {
+        setProgress(100); // Ensure progress reaches 100% for standalone upload
+      }
     }
   };
 
@@ -222,7 +239,11 @@ const ImportProducts: React.FC = () => {
             <div className="space-y-2">
               <Progress value={progress} className="h-2" />
               <p className="text-sm text-center text-muted-foreground">
-                {progress < 50 ? "Processing data..." : "Processing images..."}
+                {isLoading 
+                  ? "Processing Excel data..." 
+                  : isImageProcessing 
+                    ? "Processing images..." 
+                    : "Processing..."}
               </p>
             </div>
           )}

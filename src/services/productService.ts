@@ -65,9 +65,6 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
     console.log('Saving products for user:', userId);
     console.log('Number of products to save:', products.length);
     
-    // Instead of deleting all products, we'll use UPSERT to handle duplicates
-    console.log('Using upsert to handle duplicate product codes');
-    
     // Create arrays for new and existing products
     const productsToUpsert = products.map(product => ({
       sno: product.sno,
@@ -90,13 +87,12 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
       const batch = productsToUpsert.slice(i, i + batchSize);
       console.log(`Upserting batch ${i/batchSize + 1} of ${Math.ceil(productsToUpsert.length/batchSize)}, size: ${batch.length}`);
       
-      const { error, count } = await supabase
+      const { error } = await supabase
         .from('products')
         .upsert(batch, { 
           onConflict: 'product_code,user_id',
-          ignoreDuplicates: false // update the existing rows
-        })
-        .select('count');
+          ignoreDuplicates: true // changed to true to skip duplicates rather than update
+        });
       
       if (error) {
         console.error(`Error upserting batch ${i/batchSize + 1}:`, error);

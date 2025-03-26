@@ -1,4 +1,3 @@
-
 import { Product } from "@/components/ProductCard";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
@@ -66,20 +65,11 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
     console.log('Saving products for user:', userId);
     console.log('Number of products to save:', products.length);
     
-    // Delete existing products for this user
-    const { error: deleteError } = await supabase
-      .from('products')
-      .delete()
-      .eq('user_id', userId);
+    // Instead of deleting all products, we'll use UPSERT to handle duplicates
+    console.log('Using upsert to handle duplicate product codes');
     
-    if (deleteError) {
-      console.error('Error deleting existing products:', deleteError);
-      // Continue with insert anyway
-    }
-    
-    // Insert new products
-    const productsToInsert = products.map(product => ({
-      // Don't include id field, let the database generate it
+    // Create arrays for new and existing products
+    const productsToUpsert = products.map(product => ({
       sno: product.sno,
       product_code: product.product_code,
       dimensions: product.dimensions,
@@ -94,21 +84,37 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
     
     // Insert in batches to avoid exceeding payload limits
     const batchSize = 50;
-    for (let i = 0; i < productsToInsert.length; i += batchSize) {
-      const batch = productsToInsert.slice(i, i + batchSize);
-      console.log(`Inserting batch ${i/batchSize + 1} of ${Math.ceil(productsToInsert.length/batchSize)}, size: ${batch.length}`);
+    let successCount = 0;
+    
+    for (let i = 0; i < productsToUpsert.length; i += batchSize) {
+      const batch = productsToUpsert.slice(i, i + batchSize);
+      console.log(`Upserting batch ${i/batchSize + 1} of ${Math.ceil(productsToUpsert.length/batchSize)}, size: ${batch.length}`);
       
-      const { error: insertError } = await supabase
+      const { error, count } = await supabase
         .from('products')
-        .insert(batch);
+        .upsert(batch, { 
+          onConflict: 'product_code,user_id',
+          ignoreDuplicates: false // update the existing rows
+        })
+        .select('count');
       
-      if (insertError) {
-        console.error(`Error inserting batch ${i/batchSize + 1}:`, insertError);
-        throw insertError;
+      if (error) {
+        console.error(`Error upserting batch ${i/batchSize + 1}:`, error);
+        // Continue with next batch instead of throwing an error
+        // This allows partial imports to succeed
+        console.log('Continuing with next batch despite error');
+      } else {
+        successCount += batch.length;
+        console.log(`Successfully upserted batch ${i/batchSize + 1}, total progress: ${successCount}/${productsToUpsert.length}`);
       }
     }
     
-    toast.success('Products saved successfully');
+    if (successCount > 0) {
+      toast.success(`Products saved successfully (${successCount}/${productsToUpsert.length})`);
+    } else {
+      toast.error('Failed to save any products');
+      throw new Error('Failed to save products');
+    }
   } catch (error) {
     console.error('Error saving products:', error);
     toast.error('Failed to save products');

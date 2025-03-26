@@ -1,23 +1,44 @@
-import React, { useState } from "react";
+
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { Loader, FilePlus2, FileUp, PackageCheck, AlertCircle } from "lucide-react";
+import { Loader, FilePlus2, FileUp, PackageCheck, AlertCircle, Image as ImageIcon, RefreshCw } from "lucide-react";
 import FileUploader from "@/components/FileUploader";
 import { processExcelFile, getProducts, saveProducts, saveProductImage, processImageZip } from "@/services/productService";
 import { Product } from "@/components/ProductCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
 
 const ImportProducts: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [isImageProcessing, setIsImageProcessing] = useState(false);
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [hasExistingProducts, setHasExistingProducts] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
+
+  // Check if user has existing products
+  useEffect(() => {
+    const checkExistingProducts = async () => {
+      if (isAuthenticated && user) {
+        try {
+          const products = await getProducts();
+          setHasExistingProducts(products.length > 0);
+        } catch (err) {
+          console.error("Error checking existing products:", err);
+        }
+      }
+    };
+
+    checkExistingProducts();
+  }, [isAuthenticated, user]);
 
   React.useEffect(() => {
     if (!isAuthenticated) {
@@ -57,6 +78,7 @@ const ImportProducts: React.FC = () => {
 
     setIsLoading(true);
     setErrorMessage(null);
+    setProgress(0);
     
     try {
       console.log('Processing file:', excelFile.name, excelFile.type, `${(excelFile.size / 1024).toFixed(2)} KB`);
@@ -74,45 +96,26 @@ const ImportProducts: React.FC = () => {
       console.log('First product as sample:', importedProducts[0]);
 
       try {
-        // Save products directly without merging
+        // Save products with upsert approach to handle duplicates
         await saveProducts(importedProducts);
+        setProgress(50);
         
         if (zipFile) {
-          toast.info("Processing image ZIP file...");
-          try {
-            const imageMap = await processImageZip(zipFile);
-            
-            if (imageMap.size > 0) {
-              let savedImages = 0;
-              for (const [productCode, imageDataUrl] of imageMap.entries()) {
-                try {
-                  await saveProductImage(productCode, imageDataUrl);
-                  savedImages++;
-                  if (savedImages % 10 === 0) {
-                    console.log(`Saved ${savedImages}/${imageMap.size} images so far...`);
-                  }
-                } catch (imgError) {
-                  console.error(`Failed to save image for product: ${productCode}`, imgError);
-                }
-              }
-              
-              console.log(`Completed saving ${savedImages} images`);
-              toast.success(`Imported ${savedImages} images from ZIP file`);
-            } else {
-              toast.warning("No valid images found in ZIP file");
-            }
-          } catch (zipError) {
-            console.error('Error processing ZIP:', zipError);
-            toast.error("Failed to process ZIP file");
-          }
+          await handleImageUpload();
         }
         
         toast.success(`Successfully imported ${importedProducts.length} products`);
-        navigate("/products");
+        setProgress(100);
+        
+        // Give user time to see the 100% progress before navigating
+        setTimeout(() => {
+          navigate("/products");
+        }, 1000);
+        
       } catch (saveError) {
         console.error('Error saving products:', saveError);
-        setErrorMessage("Failed to save products to the database. Please try again.");
-        toast.error("Failed to save products to the database");
+        setErrorMessage("Failed to save some products to the database. Please try again.");
+        toast.error("Failed to save some products to the database");
       }
     } catch (error) {
       console.error('Import error:', error);
@@ -122,6 +125,74 @@ const ImportProducts: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleImageUpload = async () => {
+    if (!zipFile) {
+      toast.error("Please select a ZIP file with images");
+      return;
+    }
+
+    if (!user) {
+      toast.error("You must be logged in to upload images");
+      return;
+    }
+
+    setIsImageProcessing(true);
+    setErrorMessage(null);
+    
+    try {
+      toast.info("Processing image ZIP file...");
+      const imageMap = await processImageZip(zipFile);
+      
+      if (imageMap.size > 0) {
+        let savedImages = 0;
+        const totalImages = imageMap.size;
+        
+        for (const [productCode, imageDataUrl] of imageMap.entries()) {
+          try {
+            await saveProductImage(productCode, imageDataUrl);
+            savedImages++;
+            
+            // Update progress for images (from 50% to 100%)
+            const imageProgress = Math.round((savedImages / totalImages) * 50);
+            setProgress(50 + imageProgress);
+            
+            if (savedImages % 10 === 0) {
+              console.log(`Saved ${savedImages}/${imageMap.size} images so far...`);
+            }
+          } catch (imgError) {
+            console.error(`Failed to save image for product: ${productCode}`, imgError);
+          }
+        }
+        
+        console.log(`Completed saving ${savedImages} images`);
+        toast.success(`Imported ${savedImages} images from ZIP file`);
+      } else {
+        toast.warning("No valid images found in ZIP file");
+      }
+    } catch (zipError) {
+      console.error('Error processing ZIP:', zipError);
+      toast.error("Failed to process ZIP file");
+      setErrorMessage("Failed to process ZIP file. Please check the file format.");
+    } finally {
+      setIsImageProcessing(false);
+    }
+  };
+
+  // Standalone image upload handler (when no Excel file is selected)
+  const handleStandaloneImageUpload = async () => {
+    if (!zipFile) {
+      toast.error("Please select a ZIP file with images");
+      return;
+    }
+
+    if (!hasExistingProducts) {
+      toast.warning("You need to import products first before adding images");
+      return;
+    }
+
+    await handleImageUpload();
   };
 
   if (!isAuthenticated) {
@@ -145,6 +216,15 @@ const ImportProducts: React.FC = () => {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{errorMessage}</AlertDescription>
             </Alert>
+          )}
+
+          {(isLoading || isImageProcessing) && (
+            <div className="space-y-2">
+              <Progress value={progress} className="h-2" />
+              <p className="text-sm text-center text-muted-foreground">
+                {progress < 50 ? "Processing data..." : "Processing images..."}
+              </p>
+            </div>
           )}
 
           <div className="grid gap-6 lg:grid-cols-2">
@@ -177,7 +257,7 @@ const ImportProducts: React.FC = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileUp className="h-5 w-5" />
-                  Product Images (Optional)
+                  Product Images {hasExistingProducts && "(Can be used independently)"}
                 </CardTitle>
                 <CardDescription>
                   Upload a ZIP file containing your product images.
@@ -188,13 +268,29 @@ const ImportProducts: React.FC = () => {
                   onFileSelect={handleZipSelect}
                   accept=".zip"
                   label="Upload ZIP File"
-                  isLoading={isLoading}
+                  isLoading={isImageProcessing}
                 />
               </CardContent>
-              <CardFooter>
+              <CardFooter className="flex flex-col space-y-3">
                 <p className="text-xs text-muted-foreground">
                   Image files should be named with the corresponding product_code (e.g., ABC123.jpg).
                 </p>
+                {hasExistingProducts && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full" 
+                    onClick={handleStandaloneImageUpload}
+                    disabled={isImageProcessing || !zipFile}
+                  >
+                    {isImageProcessing ? (
+                      <Loader className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <ImageIcon className="mr-2 h-4 w-4" />
+                    )}
+                    Upload Images Only
+                  </Button>
+                )}
               </CardFooter>
             </Card>
           </div>
@@ -203,13 +299,13 @@ const ImportProducts: React.FC = () => {
             <Button
               variant="outline"
               onClick={() => navigate("/products")}
-              disabled={isLoading}
+              disabled={isLoading || isImageProcessing}
             >
               Cancel
             </Button>
             <Button
               onClick={handleImport}
-              disabled={isLoading || !excelFile}
+              disabled={isLoading || isImageProcessing || !excelFile}
               className="min-w-[120px]"
             >
               {isLoading ? (

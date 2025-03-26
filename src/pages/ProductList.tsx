@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { Search, QrCode, Download, Upload, Plus } from "lucide-react";
+import { Search, QrCode, Download, Upload, Plus, Loader } from "lucide-react";
 import ProductCard, { Product } from "@/components/ProductCard";
 import { getProducts, searchProducts, getProductImage } from "@/services/productService";
 import { downloadQRCode, downloadAllQRCodes } from "@/services/qrService";
@@ -41,19 +41,12 @@ const ProductList: React.FC = () => {
     }
   }, [isAuthenticated]);
 
-  const loadProducts = () => {
+  const loadProducts = async () => {
     setIsLoading(true);
     try {
-      // Get products from localStorage
-      const loadedProducts = getProducts();
-      
-      // Enhance products with image URLs if available
-      const enhancedProducts = loadedProducts.map(product => ({
-        ...product,
-        imageUrl: getProductImage(product.product_code)
-      }));
-      
-      setProducts(enhancedProducts);
+      // Get products from Supabase
+      const loadedProducts = await getProducts();
+      setProducts(loadedProducts);
     } catch (error) {
       console.error('Error loading products:', error);
       toast.error('Failed to load products');
@@ -141,13 +134,13 @@ const ProductList: React.FC = () => {
 
           {isLoading ? (
             <div className="flex justify-center items-center py-12">
-              <div className="loader"></div>
+              <Loader className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : filteredProducts.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredProducts.map((product) => (
                 <ProductCard
-                  key={product.product_code} // Changed from id to product_code to fix unique key issues
+                  key={product.product_code}
                   product={product}
                   onDownloadQR={handleDownloadQR}
                   onImageUpdate={loadProducts}

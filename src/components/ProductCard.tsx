@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,24 +32,34 @@ interface ProductCardProps {
 const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImageUpdate }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [showImageUpload, setShowImageUpload] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   
   const productImage = product.imageUrl || "/placeholder.svg";
   
-  const handleImageUpload = (file: File) => {
+  const handleImageUpload = async (file: File) => {
+    setIsUploading(true);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       if (e.target?.result) {
-        const imageDataUrl = e.target.result.toString();
-        saveProductImage(product.product_code, imageDataUrl);
-        toast.success("Image uploaded successfully");
-        setShowImageUpload(false);
-        if (onImageUpdate) {
-          onImageUpdate();
+        try {
+          const imageDataUrl = e.target.result.toString();
+          await saveProductImage(product.product_code, imageDataUrl);
+          toast.success("Image uploaded successfully");
+          setShowImageUpload(false);
+          if (onImageUpdate) {
+            onImageUpdate();
+          }
+        } catch (error) {
+          console.error("Failed to save image:", error);
+          toast.error("Failed to save image");
+        } finally {
+          setIsUploading(false);
         }
       }
     };
     reader.onerror = () => {
       toast.error("Failed to read image file");
+      setIsUploading(false);
     };
     reader.readAsDataURL(file);
   };
@@ -222,6 +231,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
               accept="image/*"
               label={`Upload image for ${product.product_code}`}
               maxSize={5} // 5MB max
+              isLoading={isUploading}
             />
           </div>
         </DialogContent>

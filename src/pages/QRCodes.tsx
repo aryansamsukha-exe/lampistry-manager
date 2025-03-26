@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { QrCode, Download, Package, Loader } from "lucide-react";
-import { getProducts, getProductImage } from "@/services/productService";
+import { getProducts } from "@/services/productService";
 import { createQRWithText, downloadQRCode, downloadAllQRCodes } from "@/services/qrService";
 import { Product } from "@/components/ProductCard";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -34,18 +34,12 @@ const QRCodes: React.FC = () => {
   const loadProductsAndGenerateQRs = async () => {
     setIsLoading(true);
     try {
-      const loadedProducts = getProducts();
-      
-      const enhancedProducts = loadedProducts.map(product => ({
-        ...product,
-        imageUrl: getProductImage(product.product_code)
-      }));
-      
-      setProducts(enhancedProducts);
+      const loadedProducts = await getProducts();
+      setProducts(loadedProducts);
 
       const qrCodesMap = new Map<string, string>();
       await Promise.all(
-        enhancedProducts.map(async (product) => {
+        loadedProducts.map(async (product) => {
           try {
             const qrDataUrl = await createQRWithText(product);
             qrCodesMap.set(product.id, qrDataUrl);
@@ -126,7 +120,7 @@ const QRCodes: React.FC = () => {
 
           {isLoading ? (
             <div className="flex justify-center items-center py-12">
-              <div className="loader"></div>
+              <Loader className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : products.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -152,7 +146,7 @@ const QRCodes: React.FC = () => {
                         </AspectRatio>
                       ) : (
                         <div className="flex justify-center items-center h-full">
-                          <div className="loader"></div>
+                          <Loader className="h-6 w-6 animate-spin text-primary" />
                         </div>
                       )}
                     </div>

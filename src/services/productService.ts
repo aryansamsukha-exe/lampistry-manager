@@ -2,25 +2,98 @@ import { Product } from "@/components/ProductCard";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+import { supabase } from "@/integrations/supabase/client";
 
-// Local storage keys
-const PRODUCTS_STORAGE_KEY = 'lampqr_products';
-const IMAGES_STORAGE_KEY = 'lampqr_images';
-
-// Mock database using localStorage
-export const getProducts = (): Product[] => {
+// Get products for the current user
+export const getProducts = async (): Promise<Product[]> => {
   try {
-    const storedProducts = localStorage.getItem(PRODUCTS_STORAGE_KEY);
-    return storedProducts ? JSON.parse(storedProducts) : [];
+    const { data: session } = await supabase.auth.getSession();
+    if (!session.session?.user) {
+      console.error('No authenticated user found');
+      return [];
+    }
+    
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('sno', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching products:', error);
+      throw error;
+    }
+    
+    // Map database products to Product model
+    const products: Product[] = data.map(item => ({
+      id: item.id,
+      sno: item.sno,
+      product_code: item.product_code,
+      dimensions: item.dimensions,
+      length: item.length,
+      width: item.width,
+      height: item.height,
+      price: item.price,
+      cbm: item.cbm,
+      description: item.description || '',
+    }));
+    
+    // Get product images
+    await enhanceProductsWithImages(products);
+    
+    return products;
   } catch (error) {
     console.error('Error getting products:', error);
     return [];
   }
 };
 
-export const saveProducts = (products: Product[]): void => {
+// Save products for the current user
+export const saveProducts = async (products: Product[]): Promise<void> => {
   try {
-    localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(products));
+    const { data: session } = await supabase.auth.getSession();
+    if (!session.session?.user) {
+      toast.error('You must be logged in to save products');
+      return;
+    }
+    
+    const userId = session.session.user.id;
+    
+    // Delete existing products for this user
+    const { error: deleteError } = await supabase
+      .from('products')
+      .delete()
+      .neq('id', 'placeholder'); // Delete all rows (RLS ensures only the user's rows)
+    
+    if (deleteError) {
+      console.error('Error deleting existing products:', deleteError);
+      throw deleteError;
+    }
+    
+    // Insert new products
+    const productsToInsert = products.map(product => ({
+      id: product.id,
+      sno: product.sno,
+      product_code: product.product_code,
+      dimensions: product.dimensions,
+      length: product.length,
+      width: product.width,
+      height: product.height,
+      price: product.price,
+      cbm: product.cbm,
+      description: product.description,
+      user_id: userId
+    }));
+    
+    const { error: insertError } = await supabase
+      .from('products')
+      .insert(productsToInsert);
+    
+    if (insertError) {
+      console.error('Error inserting products:', insertError);
+      throw insertError;
+    }
+    
+    toast.success('Products saved successfully');
   } catch (error) {
     console.error('Error saving products:', error);
     toast.error('Failed to save products');
@@ -28,12 +101,49 @@ export const saveProducts = (products: Product[]): void => {
 };
 
 // Save a product image
-export const saveProductImage = (productCode: string, imageDataUrl: string): void => {
+export const saveProductImage = async (productCode: string, imageDataUrl: string): Promise<void> => {
   try {
-    const storedImages = localStorage.getItem(IMAGES_STORAGE_KEY);
-    const images = storedImages ? JSON.parse(storedImages) : {};
-    images[productCode] = imageDataUrl;
-    localStorage.setItem(IMAGES_STORAGE_KEY, JSON.stringify(images));
+    const { data: session } = await supabase.auth.getSession();
+    if (!session.session?.user) {
+      toast.error('You must be logged in to save product images');
+      return;
+    }
+    
+    const userId = session.session.user.id;
+    
+    // Check if image exists for this product
+    const { data: existingImages } = await supabase
+      .from('product_images')
+      .select('id')
+      .eq('product_code', productCode)
+      .single();
+    
+    if (existingImages) {
+      // Update existing image
+      const { error } = await supabase
+        .from('product_images')
+        .update({ image_url: imageDataUrl })
+        .eq('product_code', productCode);
+      
+      if (error) {
+        console.error('Error updating product image:', error);
+        throw error;
+      }
+    } else {
+      // Insert new image
+      const { error } = await supabase
+        .from('product_images')
+        .insert({
+          product_code: productCode,
+          image_url: imageDataUrl,
+          user_id: userId
+        });
+      
+      if (error) {
+        console.error('Error inserting product image:', error);
+        throw error;
+      }
+    }
   } catch (error) {
     console.error('Error saving image:', error);
     toast.error('Failed to save image');
@@ -41,14 +151,54 @@ export const saveProductImage = (productCode: string, imageDataUrl: string): voi
 };
 
 // Get a product image
-export const getProductImage = (productCode: string): string | undefined => {
+export const getProductImage = async (productCode: string): Promise<string | undefined> => {
   try {
-    const storedImages = localStorage.getItem(IMAGES_STORAGE_KEY);
-    const images = storedImages ? JSON.parse(storedImages) : {};
-    return images[productCode];
+    const { data, error } = await supabase
+      .from('product_images')
+      .select('image_url')
+      .eq('product_code', productCode)
+      .maybeSingle();
+    
+    if (error) {
+      console.error('Error getting product image:', error);
+      return undefined;
+    }
+    
+    return data?.image_url;
   } catch (error) {
     console.error('Error getting image:', error);
     return undefined;
+  }
+};
+
+// Enhance products with their images
+const enhanceProductsWithImages = async (products: Product[]): Promise<void> => {
+  try {
+    const productCodes = products.map(p => p.product_code);
+    
+    // Fetch all images for these products in a single query
+    const { data, error } = await supabase
+      .from('product_images')
+      .select('product_code, image_url')
+      .in('product_code', productCodes);
+    
+    if (error) {
+      console.error('Error fetching product images:', error);
+      return;
+    }
+    
+    // Create a map for quick lookup
+    const imageMap = new Map<string, string>();
+    data.forEach(item => {
+      imageMap.set(item.product_code, item.image_url);
+    });
+    
+    // Add images to products
+    products.forEach(product => {
+      product.imageUrl = imageMap.get(product.product_code);
+    });
+  } catch (error) {
+    console.error('Error enhancing products with images:', error);
   }
 };
 
@@ -59,7 +209,6 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
     
     reader.onload = (e) => {
       try {
-        console.log('File loaded, processing Excel data...');
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         
@@ -258,7 +407,7 @@ export const processImageZip = async (file: File): Promise<Map<string, string>> 
   });
 };
 
-// Search products - Fixed to correctly search by product code
+// Search products
 export const searchProducts = (products: Product[], query: string): Product[] => {
   if (!query.trim()) return products;
   
@@ -290,8 +439,47 @@ export const searchProducts = (products: Product[], query: string): Product[] =>
   return results;
 };
 
-// Get a product by product code - New helper function
-export const getProductByCode = (productCode: string): Product | undefined => {
-  const products = getProducts();
-  return products.find(p => p.product_code.toLowerCase() === productCode.toLowerCase());
+// Get a product by product code - Updated to use Supabase
+export const getProductByCode = async (productCode: string): Promise<Product | undefined> => {
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('product_code', productCode)
+      .maybeSingle();
+      
+    if (error) {
+      console.error('Error fetching product:', error);
+      return undefined;
+    }
+    
+    if (!data) {
+      return undefined;
+    }
+    
+    // Convert to Product type
+    const product: Product = {
+      id: data.id,
+      sno: data.sno,
+      product_code: data.product_code,
+      dimensions: data.dimensions,
+      length: data.length,
+      width: data.width,
+      height: data.height,
+      price: data.price,
+      cbm: data.cbm,
+      description: data.description || '',
+    };
+    
+    // Get image if available
+    const imageUrl = await getProductImage(productCode);
+    if (imageUrl) {
+      product.imageUrl = imageUrl;
+    }
+    
+    return product;
+  } catch (error) {
+    console.error('Error getting product by code:', error);
+    return undefined;
+  }
 };

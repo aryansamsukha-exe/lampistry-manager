@@ -17,7 +17,7 @@ const ImportProducts: React.FC = () => {
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   React.useEffect(() => {
     if (!isAuthenticated) {
@@ -50,6 +50,11 @@ const ImportProducts: React.FC = () => {
       return;
     }
 
+    if (!user) {
+      toast.error("You must be logged in to import products");
+      return;
+    }
+
     setIsLoading(true);
     setErrorMessage(null);
     
@@ -68,7 +73,7 @@ const ImportProducts: React.FC = () => {
       console.log('Successfully imported products:', importedProducts.length);
       console.log('First product as sample:', importedProducts[0]);
 
-      const existingProducts = getProducts();
+      const existingProducts = await getProducts();
       
       const existingProductMap = new Map<string, Product>();
       existingProducts.forEach(product => {
@@ -82,7 +87,7 @@ const ImportProducts: React.FC = () => {
           : newProduct;
       });
       
-      saveProducts(mergedProducts);
+      await saveProducts(mergedProducts);
       
       if (zipFile) {
         try {
@@ -91,7 +96,7 @@ const ImportProducts: React.FC = () => {
           
           if (imageMap.size > 0) {
             for (const [productCode, imageDataUrl] of imageMap.entries()) {
-              saveProductImage(productCode, imageDataUrl);
+              await saveProductImage(productCode, imageDataUrl);
               console.log(`Saved image for product: ${productCode}`);
             }
             

@@ -1,13 +1,15 @@
+
 import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Upload, X, FileText } from "lucide-react";
+import { Upload, X, FileText, Loader } from "lucide-react";
 
 interface FileUploaderProps {
   onFileSelect: (file: File) => void;
   accept: string;
   maxSize?: number; // in MB
   label: string;
+  isLoading?: boolean; // Add isLoading prop
 }
 
 const FileUploader: React.FC<FileUploaderProps> = ({
@@ -15,6 +17,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   accept,
   maxSize = 10, // Default max size: 10MB
   label,
+  isLoading = false, // Default to false
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -144,11 +147,16 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           className="hidden"
           accept={accept}
           onChange={handleChange}
+          disabled={isLoading}
         />
 
         {selectedFile ? (
           <div className="flex flex-col items-center gap-2 w-full">
-            <FileText className="h-10 w-10 text-primary" />
+            {isLoading ? (
+              <Loader className="h-10 w-10 text-primary animate-spin" />
+            ) : (
+              <FileText className="h-10 w-10 text-primary" />
+            )}
             <p className="font-medium text-center break-all">{selectedFile.name}</p>
             <p className="text-sm text-muted-foreground">
               {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
@@ -158,6 +166,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
               size="sm" 
               className="mt-2 gap-1"
               onClick={clearSelection}
+              disabled={isLoading}
             >
               <X className="h-4 w-4" />
               Remove
@@ -165,7 +174,11 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           </div>
         ) : (
           <>
-            <Upload className="h-10 w-10 text-muted-foreground mb-2" />
+            {isLoading ? (
+              <Loader className="h-10 w-10 text-primary animate-spin mb-2" />
+            ) : (
+              <Upload className="h-10 w-10 text-muted-foreground mb-2" />
+            )}
             <p className="mb-2 text-sm font-medium text-center">{label}</p>
             <p className="mb-4 text-xs text-muted-foreground text-center">
               Drag & drop or click to browse
@@ -175,6 +188,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
               variant="outline" 
               size="sm"
               onClick={handleButtonClick}
+              disabled={isLoading}
             >
               Select File
             </Button>

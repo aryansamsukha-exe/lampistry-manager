@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
@@ -73,45 +74,47 @@ const ImportProducts: React.FC = () => {
       console.log('Successfully imported products:', importedProducts.length);
       console.log('First product as sample:', importedProducts[0]);
 
-      const existingProducts = await getProducts();
-      
-      const existingProductMap = new Map<string, Product>();
-      existingProducts.forEach(product => {
-        existingProductMap.set(product.product_code, product);
-      });
-      
-      const mergedProducts = importedProducts.map(newProduct => {
-        const existingProduct = existingProductMap.get(newProduct.product_code);
-        return existingProduct 
-          ? { ...existingProduct, ...newProduct, id: existingProduct.id }
-          : newProduct;
-      });
-      
-      await saveProducts(mergedProducts);
-      
-      if (zipFile) {
-        try {
-          toast.info("Processing image ZIP file...");
-          const imageMap = await processImageZip(zipFile);
-          
-          if (imageMap.size > 0) {
-            for (const [productCode, imageDataUrl] of imageMap.entries()) {
-              await saveProductImage(productCode, imageDataUrl);
-              console.log(`Saved image for product: ${productCode}`);
-            }
+      try {
+        // Save products directly without merging
+        await saveProducts(importedProducts);
+        
+        if (zipFile) {
+          try {
+            toast.info("Processing image ZIP file...");
+            const imageMap = await processImageZip(zipFile);
             
-            toast.success(`Imported ${imageMap.size} images from ZIP file`);
-          } else {
-            toast.warning("No valid images found in ZIP file");
+            if (imageMap.size > 0) {
+              let savedImages = 0;
+              for (const [productCode, imageDataUrl] of imageMap.entries()) {
+                try {
+                  await saveProductImage(productCode, imageDataUrl);
+                  savedImages++;
+                  if (savedImages % 10 === 0) {
+                    console.log(`Saved ${savedImages}/${imageMap.size} images so far...`);
+                  }
+                } catch (imgError) {
+                  console.error(`Failed to save image for product: ${productCode}`, imgError);
+                }
+              }
+              
+              console.log(`Completed saving ${savedImages} images`);
+              toast.success(`Imported ${savedImages} images from ZIP file`);
+            } else {
+              toast.warning("No valid images found in ZIP file");
+            }
+          } catch (zipError) {
+            console.error('Error processing ZIP:', zipError);
+            toast.error("Failed to process ZIP file");
           }
-        } catch (zipError) {
-          console.error('Error processing ZIP:', zipError);
-          toast.error("Failed to process ZIP file");
         }
+        
+        toast.success(`Successfully imported ${importedProducts.length} products`);
+        navigate("/products");
+      } catch (saveError) {
+        console.error('Error saving products:', saveError);
+        setErrorMessage("Failed to save products to the database. Please try again.");
+        toast.error("Failed to save products to the database");
       }
-      
-      toast.success(`Successfully imported ${mergedProducts.length} products`);
-      navigate("/products");
     } catch (error) {
       console.error('Import error:', error);
       const errorMsg = error instanceof Error ? error.message : "Failed to import products";
@@ -161,11 +164,12 @@ const ImportProducts: React.FC = () => {
                   onFileSelect={handleExcelSelect}
                   accept=".xlsx,.xls"
                   label="Upload Excel File"
+                  isLoading={isLoading}
                 />
               </CardContent>
               <CardFooter className="flex flex-col space-y-2">
                 <p className="text-xs text-muted-foreground w-full">
-                  The Excel file should contain columns: Sno, product_code, dimensions, breadth, height, price, cbm, description
+                  The Excel file should contain columns: Sno/S.No, Item Code/product_code, Size/dimensions, price, cbm, description
                 </p>
               </CardFooter>
             </Card>
@@ -185,6 +189,7 @@ const ImportProducts: React.FC = () => {
                   onFileSelect={handleZipSelect}
                   accept=".zip"
                   label="Upload ZIP File"
+                  isLoading={isLoading}
                 />
               </CardContent>
               <CardFooter>
@@ -199,6 +204,7 @@ const ImportProducts: React.FC = () => {
             <Button
               variant="outline"
               onClick={() => navigate("/products")}
+              disabled={isLoading}
             >
               Cancel
             </Button>

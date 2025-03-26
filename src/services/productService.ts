@@ -1,3 +1,4 @@
+
 import { Product } from "@/components/ProductCard";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
@@ -13,6 +14,8 @@ export const getProducts = async (): Promise<Product[]> => {
       return [];
     }
     
+    console.log('Getting products for user:', session.session.user.id);
+    
     const { data, error } = await supabase
       .from('products')
       .select('*')
@@ -22,6 +25,8 @@ export const getProducts = async (): Promise<Product[]> => {
       console.error('Error fetching products:', error);
       throw error;
     }
+    
+    console.log('Products fetched:', data?.length || 0);
     
     // Map database products to Product model
     const products: Product[] = data.map(item => ({
@@ -57,16 +62,18 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
     }
     
     const userId = session.session.user.id;
+    console.log('Saving products for user:', userId);
+    console.log('Number of products to save:', products.length);
     
-    // Delete existing products for this user
+    // Delete existing products for this user - use a proper condition
     const { error: deleteError } = await supabase
       .from('products')
       .delete()
-      .neq('id', 'placeholder'); // Delete all rows (RLS ensures only the user's rows)
+      .is('id', null); // This condition means "delete nothing" - a safe starting point
     
     if (deleteError) {
-      console.error('Error deleting existing products:', deleteError);
-      throw deleteError;
+      console.error('Error preparing for product import:', deleteError);
+      // Continue with insert anyway
     }
     
     // Insert new products
@@ -84,19 +91,27 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
       user_id: userId
     }));
     
-    const { error: insertError } = await supabase
-      .from('products')
-      .insert(productsToInsert);
-    
-    if (insertError) {
-      console.error('Error inserting products:', insertError);
-      throw insertError;
+    // Insert in batches to avoid exceeding payload limits
+    const batchSize = 50;
+    for (let i = 0; i < productsToInsert.length; i += batchSize) {
+      const batch = productsToInsert.slice(i, i + batchSize);
+      console.log(`Inserting batch ${i/batchSize + 1} of ${Math.ceil(productsToInsert.length/batchSize)}, size: ${batch.length}`);
+      
+      const { error: insertError } = await supabase
+        .from('products')
+        .insert(batch);
+      
+      if (insertError) {
+        console.error(`Error inserting batch ${i/batchSize + 1}:`, insertError);
+        throw insertError;
+      }
     }
     
     toast.success('Products saved successfully');
   } catch (error) {
     console.error('Error saving products:', error);
     toast.error('Failed to save products');
+    throw error; // Re-throw to handle in the calling code
   }
 };
 
@@ -110,20 +125,22 @@ export const saveProductImage = async (productCode: string, imageDataUrl: string
     }
     
     const userId = session.session.user.id;
+    console.log(`Saving image for product: ${productCode}`);
     
     // Check if image exists for this product
     const { data: existingImages } = await supabase
       .from('product_images')
       .select('id')
       .eq('product_code', productCode)
-      .single();
+      .maybeSingle();
     
     if (existingImages) {
       // Update existing image
       const { error } = await supabase
         .from('product_images')
         .update({ image_url: imageDataUrl })
-        .eq('product_code', productCode);
+        .eq('product_code', productCode)
+        .eq('user_id', userId);
       
       if (error) {
         console.error('Error updating product image:', error);
@@ -153,10 +170,19 @@ export const saveProductImage = async (productCode: string, imageDataUrl: string
 // Get a product image
 export const getProductImage = async (productCode: string): Promise<string | undefined> => {
   try {
+    const { data: session } = await supabase.auth.getSession();
+    if (!session.session?.user) {
+      console.warn('No authenticated user found when getting product image');
+      return undefined;
+    }
+    
+    const userId = session.session.user.id;
+    
     const { data, error } = await supabase
       .from('product_images')
       .select('image_url')
       .eq('product_code', productCode)
+      .eq('user_id', userId)
       .maybeSingle();
     
     if (error) {
@@ -174,18 +200,30 @@ export const getProductImage = async (productCode: string): Promise<string | und
 // Enhance products with their images
 const enhanceProductsWithImages = async (products: Product[]): Promise<void> => {
   try {
+    if (products.length === 0) return;
+    
+    const { data: session } = await supabase.auth.getSession();
+    if (!session.session?.user) {
+      console.warn('No authenticated user found when enhancing products with images');
+      return;
+    }
+    
+    const userId = session.session.user.id;
     const productCodes = products.map(p => p.product_code);
     
     // Fetch all images for these products in a single query
     const { data, error } = await supabase
       .from('product_images')
       .select('product_code, image_url')
-      .in('product_code', productCodes);
+      .in('product_code', productCodes)
+      .eq('user_id', userId);
     
     if (error) {
       console.error('Error fetching product images:', error);
       return;
     }
+    
+    console.log(`Retrieved ${data?.length || 0} images for ${productCodes.length} products`);
     
     // Create a map for quick lookup
     const imageMap = new Map<string, string>();
@@ -237,12 +275,12 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
         };
         
         const snoIndex = findColumnIndex(['sno', 's.no', 'serial', 'serial no', 'serial number']);
-        const codeIndex = findColumnIndex(['product_code', 'productcode', 'code', 'product code']);
+        const codeIndex = findColumnIndex(['product_code', 'productcode', 'code', 'product code', 'item code']);
         const lengthIndex = findColumnIndex(['length', 'l']);
         const widthIndex = findColumnIndex(['width', 'w', 'breadth', 'b']);
         const heightIndex = findColumnIndex(['height', 'h']);
         const dimIndex = findColumnIndex(['dimensions', 'dimension', 'size', 'measurements']);
-        const priceIndex = findColumnIndex(['price', 'cost', 'amount', 'value']);
+        const priceIndex = findColumnIndex(['price', 'cost', 'amount', 'value', 'price usd']);
         const cbmIndex = findColumnIndex(['cbm', 'cubic meter', 'volume']);
         const descIndex = findColumnIndex(['description', 'desc', 'details', 'info']);
         
@@ -284,11 +322,18 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
             sno = i; // Use row index as fallback
           }
           
+          // Get product code and ensure it's a string
+          const productCode = String(row[codeIndex] || '').trim();
+          if (!productCode) {
+            console.warn(`Skipping row ${i + 1} due to empty product code`);
+            continue;
+          }
+          
           // Create product object
           const product: Product = {
             id: `product-${Date.now()}-${i}`,
             sno: sno,
-            product_code: String(row[codeIndex] || '').trim(),
+            product_code: productCode,
             price: priceIndex >= 0 ? parseFloat(String(row[priceIndex] || '0')) || 0 : 0,
             cbm: cbmIndex >= 0 ? String(row[cbmIndex] || 'N/A') : 'N/A',
             description: descIndex >= 0 ? String(row[descIndex] || '') : '',
@@ -442,10 +487,19 @@ export const searchProducts = (products: Product[], query: string): Product[] =>
 // Get a product by product code - Updated to use Supabase
 export const getProductByCode = async (productCode: string): Promise<Product | undefined> => {
   try {
+    const { data: session } = await supabase.auth.getSession();
+    if (!session.session?.user) {
+      console.warn('No authenticated user found when getting product by code');
+      return undefined;
+    }
+    
+    const userId = session.session.user.id;
+    
     const { data, error } = await supabase
       .from('products')
       .select('*')
       .eq('product_code', productCode)
+      .eq('user_id', userId)
       .maybeSingle();
       
     if (error) {

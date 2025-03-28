@@ -12,6 +12,7 @@ import ProductList from "./pages/ProductList";
 import ImportProducts from "./pages/ImportProducts";
 import QRCodes from "./pages/QRCodes";
 import NotFound from "./pages/NotFound";
+import PublicProductDetails from "./pages/PublicProductDetails";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,9 @@ const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<Index />} />
     <Route path="/login" element={<Login />} />
+    
+    {/* Public route - no authentication required */}
+    <Route path="/public/product" element={<PublicProductDetails />} />
     
     {/* Protected routes */}
     <Route path="/products" element={

@@ -7,27 +7,18 @@ import { saveAs } from "file-saver";
 // Generate QR code for a product with a proper URL for redirection
 export const generateQRCode = async (product: Product, size = 200): Promise<string> => {
   try {
+    // Create an absolute URL that will work when scanned from a mobile device
+    // First, get the current domain from the window location
+    const domain = window.location.origin;
+    
     // Create a proper URL that points to the product details
-    // This will be a relative URL that works when deployed
-    const redirectUrl = `/products?search=${encodeURIComponent(product.product_code)}`;
+    const redirectUrl = `${domain}/products?search=${encodeURIComponent(product.product_code)}`;
     
-    // Store both the redirect URL and basic product data
-    const productData = {
-      url: redirectUrl,
-      id: product.id,
-      code: product.product_code,
-      price: product.price,
-      // Include separate dimensions if available
-      length: product.length,
-      width: product.width,
-      height: product.height,
-      dimensions: product.dimensions,
-    };
+    // QR code data only needs the URL to redirect to
+    // Don't include any unnecessary product data since we're redirecting to a specific product page
     
-    const dataString = JSON.stringify(productData);
-    
-    // Generate QR code as data URL
-    return await QRCode.toDataURL(dataString, {
+    // Generate QR code as data URL with the redirect URL
+    return await QRCode.toDataURL(redirectUrl, {
       width: size,
       margin: 2,
       color: {

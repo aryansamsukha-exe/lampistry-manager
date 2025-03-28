@@ -1,13 +1,15 @@
+
 import React, { useState } from "react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { QrCode, Download, ImageIcon, Info, Upload } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { QrCode, Download, ImageIcon, Info, Upload, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import FileUploader from "@/components/FileUploader";
-import { saveProductImage } from "@/services/productService";
+import { saveProductImage, deleteProduct } from "@/services/productService";
 import { toast } from "sonner";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 export type Product = {
   id: string;
@@ -27,12 +29,15 @@ interface ProductCardProps {
   product: Product;
   onDownloadQR: (product: Product) => void;
   onImageUpdate?: () => void; // Callback to refresh product list after image update
+  onProductDelete?: () => void; // Callback to refresh product list after deletion
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImageUpdate }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImageUpdate, onProductDelete }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [showImageUpload, setShowImageUpload] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const productImage = product.imageUrl || "/placeholder.svg";
   
@@ -63,8 +68,26 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
     };
     reader.readAsDataURL(file);
   };
+  
+  const handleDeleteProduct = async () => {
+    setIsDeleting(true);
+    try {
+      const success = await deleteProduct(product.id);
+      if (success) {
+        setShowDeleteConfirm(false);
+        if (onProductDelete) {
+          onProductDelete();
+        }
+      }
+    } catch (error) {
+      console.error("Failed to delete product:", error);
+      toast.error("Failed to delete product");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
-  // Format dimensions for display
+  // Format dimensions for display in the standardized format "length x width x height"
   const getDimensionsDisplay = () => {
     if (product.length && product.width && product.height) {
       return `${product.length} × ${product.width} × ${product.height}`;
@@ -209,13 +232,25 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
             
             <Separator />
             
-            <Button
-              className="w-full flex items-center justify-center gap-2"
-              onClick={() => onDownloadQR(product)}
-            >
-              <Download className="h-4 w-4" />
-              Download QR Code
-            </Button>
+            <div className="flex justify-between">
+              <Button
+                variant="outline"
+                onClick={() => onDownloadQR(product)}
+                className="flex items-center justify-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Download QR Code
+              </Button>
+              
+              <Button
+                variant="destructive"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center justify-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Product
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -236,6 +271,34 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
           </div>
         </DialogContent>
       </Dialog>
+      
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this product?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete product <strong>{product.product_code}</strong> and all associated data, including images. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteProduct();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>Deleting...</>
+              ) : (
+                <>Delete</>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };

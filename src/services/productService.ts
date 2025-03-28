@@ -28,7 +28,6 @@ export const getProducts = async (): Promise<Product[]> => {
     
     console.log('Products fetched:', data?.length || 0);
     
-    // Map database products to Product model
     const products: Product[] = data.map(item => ({
       id: item.id,
       sno: item.sno,
@@ -42,7 +41,6 @@ export const getProducts = async (): Promise<Product[]> => {
       description: item.description || '',
     }));
     
-    // Get product images
     await enhanceProductsWithImages(products);
     
     return products;
@@ -65,7 +63,6 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
     console.log('Saving products for user:', userId);
     console.log('Number of products to save:', products.length);
     
-    // Create arrays for new and existing products
     const productsToUpsert = products.map(product => ({
       sno: product.sno,
       product_code: product.product_code,
@@ -79,7 +76,6 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
       user_id: userId
     }));
     
-    // Insert in batches to avoid exceeding payload limits
     const batchSize = 50;
     let successCount = 0;
     
@@ -91,13 +87,11 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
         .from('products')
         .upsert(batch, { 
           onConflict: 'product_code,user_id',
-          ignoreDuplicates: true // changed to true to skip duplicates rather than update
+          ignoreDuplicates: true
         });
       
       if (error) {
         console.error(`Error upserting batch ${i/batchSize + 1}:`, error);
-        // Continue with next batch instead of throwing an error
-        // This allows partial imports to succeed
         console.log('Continuing with next batch despite error');
       } else {
         successCount += batch.length;
@@ -114,7 +108,61 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
   } catch (error) {
     console.error('Error saving products:', error);
     toast.error('Failed to save products');
-    throw error; // Re-throw to handle in the calling code
+    throw error;
+  }
+};
+
+// Delete a product by its ID
+export const deleteProduct = async (productId: string): Promise<boolean> => {
+  try {
+    const { data: session } = await supabase.auth.getSession();
+    if (!session.session?.user) {
+      toast.error('You must be logged in to delete products');
+      return false;
+    }
+    
+    const userId = session.session.user.id;
+    console.log(`Deleting product with ID: ${productId} for user: ${userId}`);
+    
+    const { data: productData } = await supabase
+      .from('products')
+      .select('product_code')
+      .eq('id', productId)
+      .eq('user_id', userId)
+      .maybeSingle();
+      
+    if (productData) {
+      const { error: imageDeleteError } = await supabase
+        .from('product_images')
+        .delete()
+        .eq('product_code', productData.product_code)
+        .eq('user_id', userId);
+        
+      if (imageDeleteError) {
+        console.error('Error deleting product image:', imageDeleteError);
+      } else {
+        console.log(`Deleted image for product code: ${productData.product_code}`);
+      }
+    }
+    
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', productId)
+      .eq('user_id', userId);
+    
+    if (error) {
+      console.error('Error deleting product:', error);
+      toast.error('Failed to delete product');
+      return false;
+    }
+    
+    toast.success('Product deleted successfully');
+    return true;
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    toast.error('Failed to delete product');
+    return false;
   }
 };
 
@@ -130,7 +178,6 @@ export const saveProductImage = async (productCode: string, imageDataUrl: string
     const userId = session.session.user.id;
     console.log(`Saving image for product: ${productCode}`);
     
-    // Check if image exists for this product
     const { data: existingImages } = await supabase
       .from('product_images')
       .select('id')
@@ -138,7 +185,6 @@ export const saveProductImage = async (productCode: string, imageDataUrl: string
       .maybeSingle();
     
     if (existingImages) {
-      // Update existing image
       const { error } = await supabase
         .from('product_images')
         .update({ image_url: imageDataUrl })
@@ -150,7 +196,6 @@ export const saveProductImage = async (productCode: string, imageDataUrl: string
         throw error;
       }
     } else {
-      // Insert new image
       const { error } = await supabase
         .from('product_images')
         .insert({
@@ -214,7 +259,6 @@ const enhanceProductsWithImages = async (products: Product[]): Promise<void> => 
     const userId = session.session.user.id;
     const productCodes = products.map(p => p.product_code);
     
-    // Fetch all images for these products in a single query
     const { data, error } = await supabase
       .from('product_images')
       .select('product_code, image_url')
@@ -228,13 +272,11 @@ const enhanceProductsWithImages = async (products: Product[]): Promise<void> => 
     
     console.log(`Retrieved ${data?.length || 0} images for ${productCodes.length} products`);
     
-    // Create a map for quick lookup
     const imageMap = new Map<string, string>();
     data.forEach(item => {
       imageMap.set(item.product_code, item.image_url);
     });
     
-    // Add images to products
     products.forEach(product => {
       product.imageUrl = imageMap.get(product.product_code);
     });
@@ -253,22 +295,18 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         
-        // Get the first worksheet
         const worksheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[worksheetName];
         
-        // Convert to JSON with header: 1 to get array of arrays first
         const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         
         if (rawData.length < 2) {
           throw new Error('Excel file has insufficient data. It should have headers and at least one data row.');
         }
         
-        // Extract headers (first row)
         const headers = rawData[0] as string[];
         console.log('Excel headers:', headers);
         
-        // Find column indexes for each required field
         const findColumnIndex = (possibleNames: string[]): number => {
           return headers.findIndex(header => {
             if (!header) return false;
@@ -303,38 +341,31 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
           throw new Error('Required columns not found. Excel file must have at least "Sno" and "product_code" columns.');
         }
         
-        // Map data rows to Product objects
         const products: Product[] = [];
         
-        // Start from row 1 (skip headers)
         for (let i = 1; i < rawData.length; i++) {
           const row = rawData[i] as any[];
           
-          // Skip empty rows
           if (!row || row.length === 0) continue;
           
-          // Make sure we have the minimum required data (sno and product_code)
           if (row[snoIndex] === undefined || row[codeIndex] === undefined) {
             console.warn(`Skipping row ${i + 1} due to missing required data`);
             continue;
           }
           
-          // Convert sno to number, default to row index if not a valid number
           let sno = parseInt(String(row[snoIndex]));
           if (isNaN(sno)) {
-            sno = i; // Use row index as fallback
+            sno = i;
           }
           
-          // Get product code and ensure it's a string
           const productCode = String(row[codeIndex] || '').trim();
           if (!productCode) {
             console.warn(`Skipping row ${i + 1} due to empty product code`);
             continue;
           }
           
-          // Create product object - Let the database generate UUID
           const product: Product = {
-            id: '', // This will be ignored when inserting
+            id: '',
             sno: sno,
             product_code: productCode,
             price: priceIndex >= 0 ? parseFloat(String(row[priceIndex] || '0')) || 0 : 0,
@@ -342,7 +373,6 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
             description: descIndex >= 0 ? String(row[descIndex] || '') : '',
           };
           
-          // Add separate dimensions if available
           if (lengthIndex >= 0 && row[lengthIndex] !== undefined) {
             product.length = String(row[lengthIndex]);
           }
@@ -355,12 +385,10 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
             product.height = String(row[heightIndex]);
           }
           
-          // Add legacy dimensions if separate dimensions not available
           if (dimIndex >= 0 && (!product.length || !product.width || !product.height)) {
             product.dimensions = String(row[dimIndex] || 'N/A');
           }
           
-          // If we have l, w, h but no legacy dimensions, create a calculated dimensions string
           if (product.length && product.width && product.height && !product.dimensions) {
             product.dimensions = `${product.length} × ${product.width} × ${product.height}`;
           }
@@ -372,7 +400,6 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
           throw new Error('No valid products found in the Excel file.');
         }
         
-        // Sort by sno
         products.sort((a, b) => a.sno - b.sno);
         
         console.log(`Successfully processed ${products.length} products`);
@@ -402,27 +429,21 @@ export const processImageZip = async (file: File): Promise<Map<string, string>> 
         const result = await zip.loadAsync(e.target?.result as ArrayBuffer);
         const imageMap = new Map<string, string>();
         
-        // Process each file in the ZIP
         const promises = Object.keys(result.files).map(async (fileName) => {
           const zipEntry = result.files[fileName];
           
-          // Skip directories
           if (zipEntry.dir) return;
           
-          // Get product code from filename (remove extension)
           const fileNameWithoutPath = fileName.split('/').pop() || '';
           const productCode = fileNameWithoutPath.split('.')[0];
           
-          // Skip if no product code or not an image
           if (!productCode || !fileNameWithoutPath.match(/\.(jpe?g|png|gif|bmp|webp)$/i)) {
             return;
           }
           
           try {
-            // Get file data
             const fileData = await zipEntry.async('blob');
             
-            // Convert to base64
             const reader = new FileReader();
             reader.readAsDataURL(fileData);
             
@@ -461,21 +482,17 @@ export const searchProducts = (products: Product[], query: string): Product[] =>
   
   const lowerQuery = query.toLowerCase().trim();
   
-  // Debug search
   console.log('Searching for:', lowerQuery);
   console.log('Products to search:', products.length);
   
   const results = products.filter((product) => {
-    // Exact match for product_code gets highest priority
     if (product.product_code.toLowerCase() === lowerQuery) {
       console.log(`Exact match found for product: ${product.product_code}`);
       return true;
     }
     
-    // Partial match for product_code
     const codeMatch = product.product_code.toLowerCase().includes(lowerQuery);
     
-    // Partial match for description
     const descMatch = product.description && product.description.toLowerCase().includes(lowerQuery);
     
     console.log(`Product ${product.product_code}: code match = ${codeMatch}, desc match = ${descMatch}`);
@@ -514,7 +531,6 @@ export const getProductByCode = async (productCode: string): Promise<Product | u
       return undefined;
     }
     
-    // Convert to Product type
     const product: Product = {
       id: data.id,
       sno: data.sno,
@@ -528,7 +544,6 @@ export const getProductByCode = async (productCode: string): Promise<Product | u
       description: data.description || '',
     };
     
-    // Get image if available
     const imageUrl = await getProductImage(productCode);
     if (imageUrl) {
       product.imageUrl = imageUrl;

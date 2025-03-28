@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { Search, QrCode, Download, Upload, Plus, Loader } from "lucide-react";
 import ProductCard, { Product } from "@/components/ProductCard";
-import { getProducts, searchProducts, getProductImage } from "@/services/productService";
+import { getProducts, searchProducts } from "@/services/productService";
 import { downloadQRCode, downloadAllQRCodes } from "@/services/qrService";
 
 const ProductList: React.FC = () => {
@@ -144,6 +144,7 @@ const ProductList: React.FC = () => {
                   product={product}
                   onDownloadQR={handleDownloadQR}
                   onImageUpdate={loadProducts}
+                  onProductDelete={loadProducts}
                 />
               ))}
             </div>

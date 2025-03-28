@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,15 +14,20 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, loadingSession } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Extract return URL from query params if it exists
+  const searchParams = new URLSearchParams(location.search);
+  const returnUrl = searchParams.get('returnUrl') || '/products';
   
   // Redirect if already authenticated
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/products");
+    if (!loadingSession && isAuthenticated) {
+      navigate(returnUrl);
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, returnUrl, loadingSession]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +47,7 @@ const Login: React.FC = () => {
     setIsLoading(true);
     try {
       await login(email, password);
-      navigate("/products");
+      navigate(returnUrl);
     } catch (error) {
       // Error is displayed by the auth context via toast
       console.error(error);
@@ -53,6 +58,19 @@ const Login: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  if (loadingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-secondary/30">
+        <Loader className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Checking session...</span>
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return null; // Don't render anything while redirecting
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-secondary/30">

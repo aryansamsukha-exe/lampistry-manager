@@ -385,8 +385,17 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
             product.height = String(row[heightIndex]);
           }
           
-          if (dimIndex >= 0 && (!product.length || !product.width || !product.height)) {
-            product.dimensions = String(row[dimIndex] || 'N/A');
+          if (dimIndex >= 0 && row[dimIndex] && (!product.length || !product.width || !product.height)) {
+            const dimStr = String(row[dimIndex] || '');
+            
+            const dimParts = dimStr.split(/\s*[x×]\s*/);
+            if (dimParts.length === 3) {
+              if (!product.length) product.length = dimParts[0].trim();
+              if (!product.width) product.width = dimParts[1].trim();
+              if (!product.height) product.height = dimParts[2].trim();
+            }
+            
+            product.dimensions = dimStr;
           }
           
           if (product.length && product.width && product.height && !product.dimensions) {

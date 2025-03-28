@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { Search, QrCode, Download, Upload, Plus, Loader } from "lucide-react";
 import ProductCard, { Product } from "@/components/ProductCard";
-import { getProducts, searchProducts } from "@/services/productService";
+import { getProducts, searchProducts, getProductByCode } from "@/services/productService";
 import { downloadQRCode, downloadAllQRCodes } from "@/services/qrService";
 
 const ProductList: React.FC = () => {
@@ -17,14 +17,7 @@ const ProductList: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
-
-  // Redirect if not authenticated
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate("/login");
-    }
-  }, [isAuthenticated, navigate]);
+  const { isAuthenticated, loadingSession } = useAuth();
 
   // Handle search param from URL
   useEffect(() => {
@@ -36,10 +29,17 @@ const ProductList: React.FC = () => {
 
   // Load products
   useEffect(() => {
-    if (isAuthenticated) {
+    if (!loadingSession && isAuthenticated) {
       loadProducts();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loadingSession]);
+
+  // Redirect if not authenticated after checking session
+  useEffect(() => {
+    if (!loadingSession && !isAuthenticated) {
+      navigate("/login");
+    }
+  }, [isAuthenticated, navigate, loadingSession]);
 
   const loadProducts = async () => {
     setIsLoading(true);
@@ -47,6 +47,16 @@ const ProductList: React.FC = () => {
       // Get products from Supabase
       const loadedProducts = await getProducts();
       setProducts(loadedProducts);
+      
+      // If there's a search query from URL, highlight that product
+      const searchFromUrl = searchParams.get("search");
+      if (searchFromUrl) {
+        // Try to find the specific product
+        const specificProduct = await getProductByCode(searchFromUrl);
+        if (specificProduct) {
+          toast.success(`Found product: ${specificProduct.product_code}`);
+        }
+      }
     } catch (error) {
       console.error('Error loading products:', error);
       toast.error('Failed to load products');
@@ -89,6 +99,15 @@ const ProductList: React.FC = () => {
   const filteredProducts = searchQuery 
     ? searchProducts(products, searchQuery)
     : products;
+
+  if (loadingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading session...</span>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return null; // Don't render anything while redirecting

@@ -39,7 +39,10 @@ const PublicProductDetails: React.FC = () => {
           // Format the product data
           const productData: Product = {
             ...data,
-            imageUrl: data.product_images?.[0]?.image_url || undefined,
+            // Fixed the type issue by checking if product_images is an array and accessing properly
+            imageUrl: data.product_images && Array.isArray(data.product_images) && data.product_images.length > 0 
+              ? data.product_images[0].image_url 
+              : undefined,
           };
           setProduct(productData);
         }

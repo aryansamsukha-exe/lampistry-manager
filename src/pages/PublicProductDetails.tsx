@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 const PublicProductDetails: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const productCode = searchParams.get("code");
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,6 +70,16 @@ const PublicProductDetails: React.FC = () => {
     return "N/A";
   };
 
+  const handleBackButton = () => {
+    // Just go back to the previous page if possible instead of redirecting to root
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      // If no history, go to homepage
+      window.location.href = "/";
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -87,9 +98,9 @@ const PublicProductDetails: React.FC = () => {
         <p className="text-muted-foreground text-center mb-6">
           The product you're looking for cannot be found or has been removed.
         </p>
-        <Button variant="outline" onClick={() => window.location.href = "/"}>
+        <Button variant="outline" onClick={handleBackButton}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Go to Homepage
+          Go Back
         </Button>
       </div>
     );
@@ -147,11 +158,11 @@ const PublicProductDetails: React.FC = () => {
           <div className="mt-8 flex justify-center">
             <Button 
               variant="outline" 
-              onClick={() => window.location.href = "/"}
+              onClick={handleBackButton}
               className="w-full md:w-auto"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Homepage
+              Back
             </Button>
           </div>
         </CardContent>

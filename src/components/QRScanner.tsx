@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
-import { Html5Qrcode, Html5QrcodeError, Html5QrcodeResult, Html5QrcodeScannerState } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeScannerState } from "html5-qrcode";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Camera, File, StopCircle, Upload, ScanLine } from "lucide-react";
@@ -11,12 +11,13 @@ const qrConfig = {
   fps: 10,
   qrbox: { width: 250, height: 250 },
   aspectRatio: 1,
+  // Use BarcodeFormat enum values correctly as strings
   formatsToSupport: [
-    Html5Qrcode.QR_CODE, 
-    Html5Qrcode.AZTEC,
-    Html5Qrcode.DATA_MATRIX,
-    Html5Qrcode.MAXICODE,
-    Html5Qrcode.PDF_417
+    "qrcode",
+    "aztec",
+    "data_matrix",
+    "maxicode",
+    "pdf_417"
   ]
 };
 
@@ -73,7 +74,7 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess }) => {
     }
   };
 
-  const handleScanFailure = (errorMessage: string, error: Html5QrcodeError) => {
+  const handleScanFailure = (errorMessage: string, error: any) => {
     // Only log errors, don't show to user as this happens constantly during scanning
     console.debug("QR scanning process:", errorMessage, error);
   };
@@ -91,7 +92,7 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess }) => {
     }
   };
 
-  const handleScanSuccess = (decodedText: string, result: Html5QrcodeResult) => {
+  const handleScanSuccess = (decodedText: string, result: any) => {
     console.log(`QR Code scanned: ${decodedText}`, result);
     stopScanner();
     onScanSuccess(decodedText);

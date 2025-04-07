@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/Navbar";
@@ -6,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { Search, QrCode, Download, Upload, Plus, Loader } from "lucide-react";
+import { Search, QrCode, Download, Upload, Plus, Loader, ScanLine } from "lucide-react";
 import ProductCard, { Product } from "@/components/ProductCard";
 import { getProducts, searchProducts, getProductByCode } from "@/services/productService";
 import { downloadQRCode, downloadAllQRCodes } from "@/services/qrService";
@@ -19,7 +18,6 @@ const ProductList: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated, loadingSession } = useAuth();
 
-  // Handle search param from URL
   useEffect(() => {
     const searchFromUrl = searchParams.get("search");
     if (searchFromUrl) {
@@ -27,14 +25,12 @@ const ProductList: React.FC = () => {
     }
   }, [searchParams]);
 
-  // Load products
   useEffect(() => {
     if (!loadingSession && isAuthenticated) {
       loadProducts();
     }
   }, [isAuthenticated, loadingSession]);
 
-  // Redirect if not authenticated after checking session
   useEffect(() => {
     if (!loadingSession && !isAuthenticated) {
       navigate("/login");
@@ -44,14 +40,11 @@ const ProductList: React.FC = () => {
   const loadProducts = async () => {
     setIsLoading(true);
     try {
-      // Get products from Supabase
       const loadedProducts = await getProducts();
       setProducts(loadedProducts);
       
-      // If there's a search query from URL, highlight that product
       const searchFromUrl = searchParams.get("search");
       if (searchFromUrl) {
-        // Try to find the specific product
         const specificProduct = await getProductByCode(searchFromUrl);
         if (specificProduct) {
           toast.success(`Found product: ${specificProduct.product_code}`);
@@ -95,7 +88,6 @@ const ProductList: React.FC = () => {
     }
   };
 
-  // Filter products based on search query
   const filteredProducts = searchQuery 
     ? searchProducts(products, searchQuery)
     : products;
@@ -110,7 +102,7 @@ const ProductList: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    return null; // Don't render anything while redirecting
+    return null;
   }
 
   return (
@@ -126,6 +118,14 @@ const ProductList: React.FC = () => {
               </p>
             </div>
             <div className="flex gap-2 self-stretch sm:self-auto">
+              <Button
+                variant="outline"
+                onClick={() => navigate("/scan")}
+                className="flex-shrink-0"
+              >
+                <ScanLine className="mr-2 h-4 w-4" />
+                Scan QR
+              </Button>
               <Button
                 variant="outline"
                 onClick={handleDownloadAllQRs}

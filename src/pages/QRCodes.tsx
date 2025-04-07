@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { QrCode, Download, Package, Loader } from "lucide-react";
+import { QrCode, Download, Package, Loader, ScanLine } from "lucide-react";
 import { getProducts } from "@/services/productService";
 import { createQRWithText, downloadQRCode, downloadAllQRCodes } from "@/services/qrService";
 import { Product } from "@/components/ProductCard";
@@ -100,22 +100,31 @@ const QRCodes: React.FC = () => {
                 Generate and download QR codes for your products
               </p>
             </div>
-            <Button
-              onClick={handleDownloadAllQRs}
-              disabled={products.length === 0 || isDownloading}
-            >
-              {isDownloading ? (
-                <>
-                  <Loader className="mr-2 h-4 w-4 animate-spin" />
-                  Downloading...
-                </>
-              ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Download All QR Codes
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => navigate("/scan")}
+              >
+                <ScanLine className="mr-2 h-4 w-4" />
+                Scan QR
+              </Button>
+              <Button
+                onClick={handleDownloadAllQRs}
+                disabled={products.length === 0 || isDownloading}
+              >
+                {isDownloading ? (
+                  <>
+                    <Loader className="mr-2 h-4 w-4 animate-spin" />
+                    Downloading...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download All
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
           {isLoading ? (

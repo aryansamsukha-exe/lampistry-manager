@@ -24,28 +24,37 @@ const PublicProductDetails: React.FC = () => {
         return;
       }
 
+      console.log("Fetching product with code:", productCode);
+      
       try {
         // Public access to product data via product_code
         const { data, error } = await supabase
           .from('products')
-          .select('*, product_images(image_url)')
+          .select('*, product_images(*)')
           .eq('product_code', productCode)
           .single();
 
         if (error) {
+          console.error("Supabase error:", error);
           throw error;
         }
 
         if (data) {
+          console.log("Product data retrieved:", data);
+          
           // Format the product data
           const productData: Product = {
             ...data,
-            // Fixed the type issue by checking if product_images is an array and accessing properly
-            imageUrl: data.product_images && Array.isArray(data.product_images) && data.product_images.length > 0 
+            // Handle image URL properly
+            imageUrl: data.product_images && 
+                     Array.isArray(data.product_images) && 
+                     data.product_images.length > 0 
               ? data.product_images[0].image_url 
               : undefined,
           };
           setProduct(productData);
+        } else {
+          console.log("No product found with code:", productCode);
         }
       } catch (error) {
         console.error("Error fetching product:", error);

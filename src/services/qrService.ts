@@ -15,6 +15,8 @@ export const generateQRCode = async (product: Product, size = 200): Promise<stri
     // Make sure to encode the product code properly to handle special characters
     const redirectUrl = `${domain}/public/product?code=${encodeURIComponent(product.product_code)}`;
     
+    console.log("Generated QR redirect URL:", redirectUrl);
+    
     // Generate QR code as data URL with the redirect URL
     return await QRCode.toDataURL(redirectUrl, {
       width: size,

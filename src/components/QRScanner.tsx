@@ -1,16 +1,23 @@
 
 import React, { useEffect, useRef, useState } from "react";
-import { Html5Qrcode, Html5QrcodeResult } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeError, Html5QrcodeResult, Html5QrcodeScannerState } from "html5-qrcode";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Camera, File, StopCircle, Upload } from "lucide-react";
+import { Camera, File, StopCircle, Upload, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 
-// Configuration for the scanner
+// Improved configuration for the scanner with better defaults
 const qrConfig = {
   fps: 10,
   qrbox: { width: 250, height: 250 },
   aspectRatio: 1,
+  formatsToSupport: [
+    Html5Qrcode.QR_CODE, 
+    Html5Qrcode.AZTEC,
+    Html5Qrcode.DATA_MATRIX,
+    Html5Qrcode.MAXICODE,
+    Html5Qrcode.PDF_417
+  ]
 };
 
 interface QRScannerProps {
@@ -20,6 +27,7 @@ interface QRScannerProps {
 const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess }) => {
   const [scanning, setScanning] = useState(false);
   const [fileScanning, setFileScanning] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -29,36 +37,53 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess }) => {
 
     // Cleanup scanner when component unmounts
     return () => {
-      if (scannerRef.current && scanning) {
-        scannerRef.current.stop().catch(error => {
-          console.error("Failed to stop scanner:", error);
-        });
+      if (scannerRef.current) {
+        if (scannerRef.current.getState() === Html5QrcodeScannerState.SCANNING) {
+          scannerRef.current.stop().catch(error => {
+            console.error("Failed to stop scanner:", error);
+          });
+        }
       }
     };
   }, []);
 
   const startScanner = async () => {
     if (!scannerRef.current) return;
-
+    
+    setCameraError(null);
+    
     try {
+      console.log("Starting QR scanner...");
       setScanning(true);
+      
       await scannerRef.current.start(
         { facingMode: "environment" },
         qrConfig,
         handleScanSuccess,
-        undefined
+        handleScanFailure
       );
+      
+      console.log("QR scanner started successfully");
     } catch (error) {
       console.error("Failed to start scanner:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setCameraError(`Camera error: ${errorMessage}`);
       toast.error("Failed to access camera. Please check permissions.");
       setScanning(false);
     }
   };
 
+  const handleScanFailure = (errorMessage: string, error: Html5QrcodeError) => {
+    // Only log errors, don't show to user as this happens constantly during scanning
+    console.debug("QR scanning process:", errorMessage, error);
+  };
+
   const stopScanner = async () => {
     if (scannerRef.current) {
       try {
+        console.log("Stopping QR scanner...");
         await scannerRef.current.stop();
+        console.log("QR scanner stopped successfully");
         setScanning(false);
       } catch (error) {
         console.error("Failed to stop scanner:", error);
@@ -79,6 +104,7 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess }) => {
       
       setFileScanning(true);
       try {
+        console.log("Scanning file for QR code...");
         const decodedText = await scannerRef.current.scanFile(file, true);
         console.log("File scan result:", decodedText);
         onScanSuccess(decodedText);
@@ -117,6 +143,12 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess }) => {
                   Tap "Start Camera" to scan a QR code
                 </p>
               </div>
+            </div>
+          )}
+
+          {cameraError && (
+            <div className="text-destructive text-sm mb-4">
+              {cameraError}
             </div>
           )}
 
@@ -170,6 +202,13 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess }) => {
               onChange={handleFileUpload}
             />
           </div>
+          
+          {scanning && (
+            <div className="text-center text-sm text-muted-foreground mt-4 flex items-center justify-center">
+              <ScanLine className="h-4 w-4 mr-2 animate-pulse" />
+              Position the QR code in the scanner area
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

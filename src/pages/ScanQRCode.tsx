@@ -5,7 +5,7 @@ import Navbar from "@/components/Navbar";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { QrCode, Loader, ArrowLeft } from "lucide-react";
+import { QrCode, Loader, ArrowLeft, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QRScanner from "@/components/QRScanner";
 
@@ -20,42 +20,32 @@ const ScanQRCode: React.FC = () => {
     
     try {
       // Check if the scanned text is a URL
-      const url = new URL(decodedText);
+      let productCode: string | null = null;
       
-      // Check if the URL is from our domain and contains a product code
-      if (url.pathname.includes('/public/product') && url.searchParams.has('code')) {
-        const productCode = url.searchParams.get('code');
-        if (productCode) {
-          // Navigate to the product details page
-          navigate(`/public/product?code=${productCode}`);
-          toast.success("Product found!");
-          return;
-        }
-      }
-      
-      // If it's a direct product code (not a URL)
-      if (decodedText.trim() !== '') {
-        // Try to extract a product code if the text contains one
-        const productCodeMatch = decodedText.match(/code=([^&]+)/);
-        if (productCodeMatch && productCodeMatch[1]) {
-          navigate(`/public/product?code=${productCodeMatch[1]}`);
-          toast.success("Product found!");
-          return;
-        }
+      try {
+        const url = new URL(decodedText);
         
-        // If it looks like a direct product code
-        if (/^[A-Za-z0-9-]+$/.test(decodedText.trim())) {
-          navigate(`/public/product?code=${decodedText.trim()}`);
-          toast.success("Product found!");
-          return;
+        // Check if the URL contains a product code parameter
+        if (url.searchParams.has('code')) {
+          productCode = url.searchParams.get('code');
+        }
+      } catch (error) {
+        // Not a URL, check if it's a direct product code
+        if (decodedText.trim() !== '' && /^[A-Za-z0-9-]+$/.test(decodedText.trim())) {
+          productCode = decodedText.trim();
         }
       }
       
-      // If we get here, we couldn't parse a valid product code
-      toast.error("Invalid QR code. Please scan a valid product QR code.");
+      if (productCode) {
+        console.log("Navigating to product with code:", productCode);
+        navigate(`/public/product?code=${productCode}`);
+        toast.success("QR code scanned successfully!");
+      } else {
+        toast.error("Invalid QR code. Please scan a valid product QR code.");
+      }
     } catch (error) {
       console.error("Error processing QR code:", error);
-      toast.error("Invalid QR code format. Please try again.");
+      toast.error("Error processing QR code. Please try again.");
     } finally {
       setProcessing(false);
     }
@@ -93,7 +83,7 @@ const ScanQRCode: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center text-xl">
-                <QrCode className="mr-2 h-5 w-5" />
+                <ScanLine className="mr-2 h-5 w-5" />
                 Scan QR Code
               </CardTitle>
               <CardDescription>

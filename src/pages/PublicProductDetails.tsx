@@ -30,7 +30,7 @@ const PublicProductDetails: React.FC = () => {
         // Public access to product data via product_code
         const { data, error } = await supabase
           .from('products')
-          .select('*, product_images(*)')
+          .select('*')
           .eq('product_code', productCode)
           .single();
 
@@ -42,16 +42,21 @@ const PublicProductDetails: React.FC = () => {
         if (data) {
           console.log("Product data retrieved:", data);
           
+          // Get product image if available
+          const { data: imageData } = await supabase
+            .from('product_images')
+            .select('image_url')
+            .eq('product_code', productCode)
+            .maybeSingle();
+            
+          console.log("Image data retrieved:", imageData);
+          
           // Format the product data
           const productData: Product = {
             ...data,
-            // Handle image URL properly
-            imageUrl: data.product_images && 
-                     Array.isArray(data.product_images) && 
-                     data.product_images.length > 0 
-              ? data.product_images[0].image_url 
-              : undefined,
+            imageUrl: imageData?.image_url
           };
+          
           setProduct(productData);
         } else {
           console.log("No product found with code:", productCode);

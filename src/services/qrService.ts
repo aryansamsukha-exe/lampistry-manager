@@ -25,6 +25,7 @@ export const generateQRCode = async (product: Product, size = 200): Promise<stri
         dark: '#000000',
         light: '#ffffff',
       },
+      errorCorrectionLevel: 'H', // Higher error correction for better scanning
     });
   } catch (error) {
     console.error('Error generating QR code:', error);

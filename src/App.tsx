@@ -15,7 +15,14 @@ import ScanQRCode from "./pages/ScanQRCode";
 import NotFound from "./pages/NotFound";
 import PublicProductDetails from "./pages/PublicProductDetails";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 // Secure route component to protect authenticated routes
 const SecureRoute = ({ children }: { children: ReactNode }) => {

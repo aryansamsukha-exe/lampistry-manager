@@ -80,6 +80,7 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess }) => {
       setFileScanning(true);
       try {
         const decodedText = await scannerRef.current.scanFile(file, true);
+        console.log("File scan result:", decodedText);
         onScanSuccess(decodedText);
       } catch (error) {
         console.error("QR Code scan error:", error);

@@ -1,3 +1,4 @@
+
 import { Product } from "@/components/ProductCard";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
@@ -124,35 +125,49 @@ export const deleteProduct = async (productId: string): Promise<boolean> => {
     const userId = session.session.user.id;
     console.log(`Deleting product with ID: ${productId} for user: ${userId}`);
     
-    const { data: productData } = await supabase
+    // First, get the product code to delete associated images
+    const { data: productData, error: fetchError } = await supabase
       .from('products')
       .select('product_code')
       .eq('id', productId)
       .eq('user_id', userId)
       .maybeSingle();
       
-    if (productData) {
-      const { error: imageDeleteError } = await supabase
-        .from('product_images')
-        .delete()
-        .eq('product_code', productData.product_code)
-        .eq('user_id', userId);
-        
-      if (imageDeleteError) {
-        console.error('Error deleting product image:', imageDeleteError);
-      } else {
-        console.log(`Deleted image for product code: ${productData.product_code}`);
-      }
+    if (fetchError) {
+      console.error('Error fetching product for deletion:', fetchError);
+      toast.error('Failed to delete product');
+      return false;
     }
     
-    const { error } = await supabase
+    if (!productData) {
+      console.error('Product not found for deletion');
+      toast.error('Product not found');
+      return false;
+    }
+    
+    // Delete associated images
+    const { error: imageDeleteError } = await supabase
+      .from('product_images')
+      .delete()
+      .eq('product_code', productData.product_code)
+      .eq('user_id', userId);
+      
+    if (imageDeleteError) {
+      console.error('Error deleting product image:', imageDeleteError);
+      // Continue with product deletion even if image deletion fails
+    } else {
+      console.log(`Deleted image for product code: ${productData.product_code}`);
+    }
+    
+    // Delete the product
+    const { error: productDeleteError } = await supabase
       .from('products')
       .delete()
       .eq('id', productId)
       .eq('user_id', userId);
     
-    if (error) {
-      console.error('Error deleting product:', error);
+    if (productDeleteError) {
+      console.error('Error deleting product:', productDeleteError);
       toast.error('Failed to delete product');
       return false;
     }
@@ -285,7 +300,7 @@ const enhanceProductsWithImages = async (products: Product[]): Promise<void> => 
   }
 };
 
-// Process Excel file
+// Process Excel file - Updated to handle the specific Excel structure with L, W, H columns
 export const processExcelFile = async (file: File): Promise<Product[]> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -307,6 +322,7 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
         const headers = rawData[0] as string[];
         console.log('Excel headers:', headers);
         
+        // Find column indices based on your specific Excel structure
         const findColumnIndex = (possibleNames: string[]): number => {
           return headers.findIndex(header => {
             if (!header) return false;
@@ -317,24 +333,59 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
         
         const snoIndex = findColumnIndex(['sno', 's.no', 'serial', 'serial no', 'serial number']);
         const codeIndex = findColumnIndex(['product_code', 'productcode', 'code', 'product code', 'item code']);
-        const lengthIndex = findColumnIndex(['length', 'l']);
-        const widthIndex = findColumnIndex(['width', 'w', 'breadth', 'b']);
-        const heightIndex = findColumnIndex(['height', 'h']);
-        const dimIndex = findColumnIndex(['dimensions', 'dimension', 'size', 'measurements']);
+        const photoIndex = findColumnIndex(['photo', 'image', 'picture']);
+        const descIndex = findColumnIndex(['description', 'desc', 'details', 'info']);
+        const finishIndex = findColumnIndex(['finish', 'color', 'material']);
+        const sizeIndex = findColumnIndex(['size', 'dimensions', 'dimension', 'measurements']);
         const priceIndex = findColumnIndex(['price', 'cost', 'amount', 'value', 'price usd']);
         const cbmIndex = findColumnIndex(['cbm', 'cubic meter', 'volume']);
-        const descIndex = findColumnIndex(['description', 'desc', 'details', 'info']);
+        
+        // Find the sub-header row (typically row 1) to locate L, W, H columns
+        let lengthIndex = -1;
+        let widthIndex = -1;
+        let heightIndex = -1;
+        
+        // Check if there's a second header row with L, W, H
+        if (rawData.length > 1) {
+          const subHeaders = rawData[1] as string[];
+          for (let i = 0; i < subHeaders.length; i++) {
+            const header = subHeaders[i];
+            if (!header) continue;
+            
+            const headerStr = String(header).toLowerCase().trim();
+            if (headerStr === 'l' || headerStr === 'length') {
+              lengthIndex = i;
+            } else if (headerStr === 'w' || headerStr === 'width') {
+              widthIndex = i;
+            } else if (headerStr === 'h' || headerStr === 'height') {
+              heightIndex = i;
+            }
+          }
+        }
+        
+        // If we didn't find L, W, H in the second row, look for them in the main headers
+        if (lengthIndex === -1) {
+          lengthIndex = findColumnIndex(['l', 'length']);
+        }
+        if (widthIndex === -1) {
+          widthIndex = findColumnIndex(['w', 'width', 'breadth', 'b']);
+        }
+        if (heightIndex === -1) {
+          heightIndex = findColumnIndex(['h', 'height']);
+        }
         
         console.log('Column indexes:', { 
           snoIndex, 
-          codeIndex, 
+          codeIndex,
+          photoIndex,
+          descIndex,
+          finishIndex,
+          sizeIndex,
           lengthIndex,
           widthIndex,
           heightIndex,
-          dimIndex, 
           priceIndex, 
-          cbmIndex, 
-          descIndex 
+          cbmIndex
         });
         
         if (snoIndex === -1 || codeIndex === -1) {
@@ -342,8 +393,10 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
         }
         
         const products: Product[] = [];
+        const startRow = (lengthIndex !== -1 && widthIndex !== -1 && heightIndex !== -1 && 
+                         (rawData[1][lengthIndex] === 'L' || rawData[1][widthIndex] === 'W' || rawData[1][heightIndex] === 'H')) ? 2 : 1;
         
-        for (let i = 1; i < rawData.length; i++) {
+        for (let i = startRow; i < rawData.length; i++) {
           const row = rawData[i] as any[];
           
           if (!row || row.length === 0) continue;
@@ -373,6 +426,7 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
             description: descIndex >= 0 ? String(row[descIndex] || '') : '',
           };
           
+          // Handle length, width, height from their specific columns
           if (lengthIndex >= 0 && row[lengthIndex] !== undefined) {
             product.length = String(row[lengthIndex]);
           }
@@ -385,19 +439,21 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
             product.height = String(row[heightIndex]);
           }
           
-          if (dimIndex >= 0 && row[dimIndex] && (!product.length || !product.width || !product.height)) {
-            const dimStr = String(row[dimIndex] || '');
+          // If size/dimensions column exists, parse it as backup for L, W, H
+          if (sizeIndex >= 0 && row[sizeIndex] && (!product.length || !product.width || !product.height)) {
+            const dimStr = String(row[sizeIndex] || '');
+            product.dimensions = dimStr;
             
+            // Try to parse dimensions like "50 x 50 x 31"
             const dimParts = dimStr.split(/\s*[x×]\s*/);
             if (dimParts.length === 3) {
               if (!product.length) product.length = dimParts[0].trim();
               if (!product.width) product.width = dimParts[1].trim();
               if (!product.height) product.height = dimParts[2].trim();
             }
-            
-            product.dimensions = dimStr;
           }
           
+          // Create dimensions string from individual L, W, H if it doesn't exist
           if (product.length && product.width && product.height && !product.dimensions) {
             product.dimensions = `${product.length} × ${product.width} × ${product.height}`;
           }

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/Navbar";
@@ -87,6 +88,11 @@ const ProductList: React.FC = () => {
       setIsLoading(false);
     }
   };
+  
+  const handleProductDelete = () => {
+    // Force a refresh of the product list
+    loadProducts();
+  };
 
   const filteredProducts = searchQuery 
     ? searchProducts(products, searchQuery)
@@ -159,11 +165,11 @@ const ProductList: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredProducts.map((product) => (
                 <ProductCard
-                  key={product.product_code}
+                  key={`${product.product_code}-${product.id}`}
                   product={product}
                   onDownloadQR={handleDownloadQR}
                   onImageUpdate={loadProducts}
-                  onProductDelete={loadProducts}
+                  onProductDelete={handleProductDelete}
                 />
               ))}
             </div>

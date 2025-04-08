@@ -43,39 +43,53 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
   
   const handleImageUpload = async (file: File) => {
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      if (e.target?.result) {
-        try {
-          const imageDataUrl = e.target.result.toString();
-          await saveProductImage(product.product_code, imageDataUrl);
-          toast.success("Image uploaded successfully");
-          setShowImageUpload(false);
-          if (onImageUpdate) {
-            onImageUpdate();
+    try {
+      const reader = new FileReader();
+      
+      reader.onload = async (e) => {
+        if (e.target?.result) {
+          try {
+            const imageDataUrl = e.target.result.toString();
+            await saveProductImage(product.product_code, imageDataUrl);
+            toast.success("Image uploaded successfully");
+            setShowImageUpload(false);
+            if (onImageUpdate) {
+              onImageUpdate();
+            }
+          } catch (error) {
+            console.error("Failed to save image:", error);
+            toast.error("Failed to save image");
           }
-        } catch (error) {
-          console.error("Failed to save image:", error);
-          toast.error("Failed to save image");
-        } finally {
-          setIsUploading(false);
         }
-      }
-    };
-    reader.onerror = () => {
-      toast.error("Failed to read image file");
+      };
+      
+      reader.onerror = () => {
+        toast.error("Failed to read image file");
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Image upload error:", error);
+      toast.error("Image upload failed");
+    } finally {
       setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
   
   const handleDeleteProduct = async () => {
+    if (!product.id) {
+      toast.error("Product ID is missing");
+      return;
+    }
+    
     setIsDeleting(true);
     try {
       const success = await deleteProduct(product.id);
       if (success) {
         setShowDeleteConfirm(false);
+        setShowDetails(false);
         if (onProductDelete) {
+          toast.success("Product deleted successfully");
           onProductDelete();
         }
       }

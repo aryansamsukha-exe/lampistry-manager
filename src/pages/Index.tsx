@@ -12,7 +12,7 @@ const Index: React.FC = () => {
     {
       icon: <Upload className="h-10 w-10 text-primary" />,
       title: "Easy Import",
-      description: "Quickly import product data from Excel spreadsheets and upload product images."
+      description: "Quickly duct data from Excel spreadsheets animport prod upload product images."
     },
     {
       icon: <Package className="h-10 w-10 text-primary" />,
@@ -39,10 +39,10 @@ const Index: React.FC = () => {
                   IHGF Exhibition Delhi
                 </div>
                 <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">
-                  Manage Your Lamp Products with Ease
+                  Manage Your Products with Ease
                 </h1>
                 <p className="text-muted-foreground md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
-                  Simplify product management, pricing, and QR code generation for your wooden, iron, and sustainable lamp business.
+                  Simplify product management, pricing, and QR code generation for your wooden, iron, and sustainable products business.
                 </p>
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Button size="lg" onClick={() => navigate("/login")}>
@@ -74,7 +74,7 @@ const Index: React.FC = () => {
                 Powerful Product Management
               </h2>
               <p className="mt-4 text-muted-foreground md:text-xl">
-                All the tools you need to showcase your lamps at the IHGF Exhibition in Delhi
+                All the tools you need to showcase your products at the Exhibitions
               </p>
             </div>
             <div className="grid gap-8 md:grid-cols-3">
@@ -105,7 +105,7 @@ const Index: React.FC = () => {
                   Ready to Simplify Your Exhibition?
                 </h2>
                 <p className="text-muted-foreground md:text-xl max-w-[700px] mx-auto">
-                  Get started with LampQR today and make managing your lamp products at IHGF Exhibition in Delhi easier than ever.
+                  Get started with Product Manager today and make managing your lamp products at Exhibitions easier than ever.
                 </p>
               </div>
               <Button size="lg" onClick={() => navigate("/login")}>
@@ -123,10 +123,10 @@ const Index: React.FC = () => {
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <div className="flex items-center gap-2">
               <QrCode className="h-6 w-6 text-primary" />
-              <span className="text-lg font-semibold">LampQR</span>
+              <span className="text-lg font-semibold">ProductMaster</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              &copy; {new Date().getFullYear()} LampQR. All rights reserved.
+              &copy; {new Date().getFullYear()} ProductMaster. All rights reserved.
             </p>
           </div>
         </div>

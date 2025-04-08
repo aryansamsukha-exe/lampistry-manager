@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,20 +14,15 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { login, isAuthenticated, loadingSession } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  
-  // Extract return URL from query params if it exists
-  const searchParams = new URLSearchParams(location.search);
-  const returnUrl = searchParams.get('returnUrl') || '/products';
   
   // Redirect if already authenticated
   useEffect(() => {
-    if (!loadingSession && isAuthenticated) {
-      navigate(returnUrl);
+    if (isAuthenticated) {
+      navigate("/products");
     }
-  }, [isAuthenticated, navigate, returnUrl, loadingSession]);
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +42,7 @@ const Login: React.FC = () => {
     setIsLoading(true);
     try {
       await login(email, password);
-      navigate(returnUrl);
+      navigate("/products");
     } catch (error) {
       // Error is displayed by the auth context via toast
       console.error(error);
@@ -59,19 +54,6 @@ const Login: React.FC = () => {
     }
   };
 
-  if (loadingSession) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-secondary/30">
-        <Loader className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-2">Checking session...</span>
-      </div>
-    );
-  }
-
-  if (isAuthenticated) {
-    return null; // Don't render anything while redirecting
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-secondary/30">
       <div className="w-full max-w-md space-y-4">
@@ -79,7 +61,7 @@ const Login: React.FC = () => {
           <div className="mx-auto h-16 w-16 flex items-center justify-center rounded-full bg-primary/10">
             <QrCode className="h-8 w-8 text-primary" />
           </div>
-          <h2 className="mt-6 text-3xl font-extrabold">LampQR</h2>
+          <h2 className="mt-6 text-3xl font-extrabold"> ProductMaster</h2>
           <p className="mt-2 text-muted-foreground">Sign in to manage your lamp products</p>
         </div>
 
@@ -153,7 +135,9 @@ const Login: React.FC = () => {
 
         <div className="text-center text-sm text-muted-foreground">
           <p>
-            Don't have an account? Contact your administrator to get access.
+            Don't have an account? Please contact your administrator to request access.
+            <br></br>
+            <a href="mailto:aryansamsukha@gmail.com"> <u> <b> aryansamsukha@gmail.com </b></u></a> or Contact: <a href="tel:+919829023550"> <b> <u> 9829023550 </u></b></a>
           </p>
         </div>
       </div>

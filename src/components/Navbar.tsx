@@ -37,7 +37,7 @@ const Navbar: React.FC = () => {
           <div className="flex items-center">
             <Link to="/" className="flex items-center space-x-2">
               <QrCode className="h-8 w-8 text-primary" />
-              <span className="text-xl font-semibold">LampQR</span>
+              <span className="text-xl font-semibold">ProductMaster</span>
             </Link>
           </div>
 

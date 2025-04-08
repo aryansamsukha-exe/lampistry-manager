@@ -88,6 +88,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
       if (success) {
         setShowDeleteConfirm(false);
         setShowDetails(false);
+        
+        // Call onProductDelete only once to update the parent component
         if (onProductDelete) {
           toast.success("Product deleted successfully");
           onProductDelete();
@@ -101,7 +103,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
     }
   };
 
-  // Format dimensions for display in the standardized format "length x width x height"
+  // Format dimensions for display in the standardized format "length × width × height"
   const getDimensionsDisplay = () => {
     if (product.length && product.width && product.height) {
       return `${product.length} × ${product.width} × ${product.height}`;

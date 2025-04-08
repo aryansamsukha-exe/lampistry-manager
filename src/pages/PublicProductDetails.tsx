@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,7 +71,7 @@ const PublicProductDetails: React.FC = () => {
     fetchProductDetails();
   }, [productCode]);
 
-  // Format dimensions for display in the standardized format "length x width x height"
+  // Format dimensions for display in the standardized format "length × width × height"
   const getDimensionsDisplay = () => {
     if (!product) return "N/A";
     

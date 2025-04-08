@@ -84,6 +84,15 @@ const QRCodes: React.FC = () => {
     }
   };
 
+  const getDimensionsDisplay = (product: Product) => {
+    if (product.length && product.width && product.height) {
+      return `${product.length} × ${product.width} × ${product.height}`;
+    } else if (product.dimensions) {
+      return product.dimensions;
+    }
+    return "N/A";
+  };
+
   if (!isAuthenticated) {
     return null;
   }
@@ -138,8 +147,7 @@ const QRCodes: React.FC = () => {
                   <CardHeader>
                     <CardTitle className="text-lg">{product.product_code}</CardTitle>
                     <CardDescription>
-                      {product.dimensions}
-                      {product.width && product.height && ` | ${product.width}×${product.height}`}
+                      {getDimensionsDisplay(product)}
                       {' | '}${product.price.toFixed(2)}
                     </CardDescription>
                   </CardHeader>

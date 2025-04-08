@@ -90,7 +90,7 @@ const ProductList: React.FC = () => {
   };
   
   const handleProductDelete = () => {
-    // Force a refresh of the product list
+    // Force a refresh of the product list after deletion
     loadProducts();
   };
 

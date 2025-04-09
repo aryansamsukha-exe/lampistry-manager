@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +27,7 @@ const PublicProductDetails: React.FC = () => {
       console.log("Fetching product with code:", productCode);
       
       try {
-        // Public access to product data via product_code
+        // Public access to product data via product_code - no user authentication required
         const { data, error } = await supabase
           .from('products')
           .select('*')

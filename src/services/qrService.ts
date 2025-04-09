@@ -33,7 +33,17 @@ export const generateQRCode = async (product: Product, size = 200): Promise<stri
   }
 };
 
-// Create QR code with product code text
+// Format dimensions for display in the standardized format "length × width × height"
+const getDimensionsDisplay = (product: Product): string => {
+  if (product.length && product.width && product.height) {
+    return `${product.length} × ${product.width} × ${product.height}`;
+  } else if (product.dimensions) {
+    return product.dimensions;
+  }
+  return "N/A";
+};
+
+// Create QR code with product code, dimensions and price text
 export const createQRWithText = async (product: Product): Promise<string> => {
   try {
     const qrDataUrl = await generateQRCode(product);
@@ -54,9 +64,12 @@ export const createQRWithText = async (product: Product): Promise<string> => {
       qrImage.src = qrDataUrl;
     });
     
+    // Calculate needed extra space for three lines of text
+    const extraHeight = 80; // Space for product code, dimensions, and price
+    
     // Set canvas size to fit QR code plus text area
     canvas.width = qrImage.width;
-    canvas.height = qrImage.height + 40; // Extra space for text
+    canvas.height = qrImage.height + extraHeight;
     
     // Fill with white background
     ctx.fillStyle = '#ffffff';
@@ -69,7 +82,16 @@ export const createQRWithText = async (product: Product): Promise<string> => {
     ctx.fillStyle = '#000000';
     ctx.font = 'bold 16px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(product.product_code, canvas.width / 2, qrImage.height + 24);
+    ctx.fillText(product.product_code, canvas.width / 2, qrImage.height + 20);
+    
+    // Add dimensions text
+    ctx.font = '14px Arial';
+    const dimensions = getDimensionsDisplay(product);
+    ctx.fillText(dimensions, canvas.width / 2, qrImage.height + 40);
+    
+    // Add price text
+    const price = `$${product.price.toFixed(2)}`;
+    ctx.fillText(price, canvas.width / 2, qrImage.height + 60);
     
     // Convert to data URL
     return canvas.toDataURL('image/png');

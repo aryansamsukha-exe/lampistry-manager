@@ -27,7 +27,7 @@ const PublicProductDetails: React.FC = () => {
       console.log("Fetching product with code:", productCode);
       
       try {
-        // Public access to product data via product_code - no user authentication required
+        // Public access to product data via product_code
         const { data, error } = await supabase
           .from('products')
           .select('*')

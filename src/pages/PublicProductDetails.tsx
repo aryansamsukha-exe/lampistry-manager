@@ -32,15 +32,15 @@ const PublicProductDetails: React.FC = () => {
           .from('products')
           .select('*')
           .eq('product_code', productCode)
-          .single();
+          .limit(1);
 
         if (error) {
           console.error("Supabase error:", error);
           throw error;
         }
 
-        if (data) {
-          console.log("Product data retrieved:", data);
+        if (data && data.length > 0) {
+          console.log("Product data retrieved:", data[0]);
           
           // Get product image if available
           const { data: imageData } = await supabase
@@ -53,7 +53,7 @@ const PublicProductDetails: React.FC = () => {
           
           // Format the product data
           const productData: Product = {
-            ...data,
+            ...data[0],
             imageUrl: imageData?.image_url
           };
           

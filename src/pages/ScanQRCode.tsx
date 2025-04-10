@@ -2,17 +2,15 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
-import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { QrCode, Loader, ArrowLeft, ScanLine } from "lucide-react";
+import { Loader, ArrowLeft, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import QRScanner from "@/components/QRScanner";
 
 const ScanQRCode: React.FC = () => {
   const [processing, setProcessing] = useState(false);
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
 
   const handleScanSuccess = (decodedText: string) => {
     console.log("Successfully scanned QR code:", decodedText);

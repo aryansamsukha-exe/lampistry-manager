@@ -24,7 +24,7 @@ const PublicProductDetails: React.FC = () => {
         return;
       }
 
-      console.log("Fetching product with code:", productCode);
+      console.log("Fetching public product with code:", productCode);
       
       try {
         // Public access to product data via product_code - no user authentication required
@@ -32,15 +32,15 @@ const PublicProductDetails: React.FC = () => {
           .from('products')
           .select('*')
           .eq('product_code', productCode)
-          .limit(1);
+          .maybeSingle();
 
         if (error) {
           console.error("Supabase error:", error);
           throw error;
         }
 
-        if (data && data.length > 0) {
-          console.log("Product data retrieved:", data[0]);
+        if (data) {
+          console.log("Product data retrieved:", data);
           
           // Get product image if available
           const { data: imageData } = await supabase
@@ -53,7 +53,7 @@ const PublicProductDetails: React.FC = () => {
           
           // Format the product data
           const productData: Product = {
-            ...data[0],
+            ...data,
             imageUrl: imageData?.image_url
           };
           

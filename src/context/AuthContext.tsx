@@ -88,23 +88,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
-      // Only attempt to sign out if we have a session
-      if (session) {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-          throw error;
-        }
-        toast.info("You have been logged out");
-      } else {
-        // If no session, just clear the local state
-        setSession(null);
-        setUser(null);
-        toast.info("No active session to log out from");
+      setIsLoading(true);
+      console.log("Attempting to log out, session:", session ? "exists" : "none");
+      
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("Error during signOut:", error);
+        throw error;
       }
+      
+      // Clear state regardless of whether there was a session
+      setSession(null);
+      setUser(null);
+      toast.info("You have been logged out");
+      
     } catch (error) {
       console.error("Logout error:", error);
       const errorMessage = error instanceof Error ? error.message : "Logout failed";
       toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   };
 

@@ -6,9 +6,9 @@ import { Separator } from "@/components/ui/separator";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ImageIcon, Loader, Package } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { Product } from "@/components/ProductCard";
 import { toast } from "sonner";
+import { getPublicProductByCode } from "@/services/publicProductService";
 
 const PublicProductDetails: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -27,36 +27,10 @@ const PublicProductDetails: React.FC = () => {
       console.log("Fetching public product with code:", productCode);
       
       try {
-        // Public access to product data via product_code - no user authentication required
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .eq('product_code', productCode)
-          .maybeSingle();
-
-        if (error) {
-          console.error("Supabase error:", error);
-          throw error;
-        }
-
-        if (data) {
-          console.log("Product data retrieved:", data);
-          
-          // Get product image if available
-          const { data: imageData } = await supabase
-            .from('product_images')
-            .select('image_url')
-            .eq('product_code', productCode)
-            .maybeSingle();
-            
-          console.log("Image data retrieved:", imageData);
-          
-          // Format the product data
-          const productData: Product = {
-            ...data,
-            imageUrl: imageData?.image_url
-          };
-          
+        const productData = await getPublicProductByCode(productCode);
+        
+        if (productData) {
+          console.log("Product data retrieved:", productData);
           setProduct(productData);
         } else {
           console.log("No product found with code:", productCode);

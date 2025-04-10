@@ -1,4 +1,3 @@
-
 import { Product } from "@/components/ProductCard";
 import QRCode from "qrcode";
 import JSZip from "jszip";

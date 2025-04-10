@@ -28,12 +28,14 @@ const ScanQRCode: React.FC = () => {
         // Check if the URL contains a product code parameter
         if (url.searchParams.has('code')) {
           productCode = url.searchParams.get('code');
+          console.log("Found product code in URL parameter:", productCode);
         } else {
           // Try to extract code from pathname
           const pathParts = url.pathname.split('/');
           const lastPart = pathParts[pathParts.length - 1];
           if (lastPart && /^[A-Za-z0-9-]+$/.test(lastPart)) {
             productCode = lastPart;
+            console.log("Extracted product code from pathname:", productCode);
           }
         }
       } catch (error) {
@@ -41,12 +43,15 @@ const ScanQRCode: React.FC = () => {
         // Not a URL, check if it's a direct product code
         if (decodedText.trim() !== '' && /^[A-Za-z0-9-]+$/.test(decodedText.trim())) {
           productCode = decodedText.trim();
+          console.log("Using direct product code:", productCode);
         }
       }
       
       if (productCode) {
         console.log("Navigating to product with code:", productCode);
-        navigate(`/public/product?code=${productCode}`);
+        const publicProductUrl = `/public/product?code=${encodeURIComponent(productCode)}`;
+        console.log("Public product URL:", publicProductUrl);
+        navigate(publicProductUrl);
         toast.success("QR code scanned successfully!");
       } else {
         console.error("Invalid QR code content:", decodedText);

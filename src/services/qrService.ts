@@ -1,30 +1,31 @@
+
 import { Product } from "@/components/ProductCard";
 import QRCode from "qrcode";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
-// Generate QR code for a product with a proper URL for redirection
+// Generate QR code containing product details directly
 export const generateQRCode = async (product: Product, size = 200): Promise<string> => {
   try {
-    // Create an absolute URL that will work when scanned from a mobile device
-    // First, get the current domain from the window location
-    const domain = window.location.origin;
+    // Format product details as a structured text string
+    const productDetails = JSON.stringify({
+      code: product.product_code,
+      price: product.price,
+      dimensions: formatDimensions(product),
+      description: product.description || 'No description available'
+    });
     
-    // Create a proper URL that points to the public product details
-    // We're only including the product code in the URL, removing dimensions
-    const redirectUrl = `${domain}/public/product?code=${encodeURIComponent(product.product_code)}`;
+    console.log("Generated product details for QR:", productDetails);
     
-    console.log("Generated QR redirect URL:", redirectUrl);
-    
-    // Generate QR code as data URL with the redirect URL
-    return await QRCode.toDataURL(redirectUrl, {
+    // Generate QR code with the product details
+    return await QRCode.toDataURL(productDetails, {
       width: size,
       margin: 2,
       color: {
         dark: '#000000',
         light: '#ffffff',
       },
-      errorCorrectionLevel: 'H', // Higher error correction for better scanning
+      errorCorrectionLevel: 'M', // Medium error correction for balance between size and readability
     });
   } catch (error) {
     console.error('Error generating QR code:', error);
@@ -33,7 +34,7 @@ export const generateQRCode = async (product: Product, size = 200): Promise<stri
 };
 
 // Format dimensions for display in the standardized format "length × width × height"
-const getDimensionsDisplay = (product: Product): string => {
+const formatDimensions = (product: Product): string => {
   if (product.length && product.width && product.height) {
     return `${product.length} × ${product.width} × ${product.height}`;
   } else if (product.dimensions) {
@@ -85,7 +86,7 @@ export const createQRWithText = async (product: Product): Promise<string> => {
     
     // Add dimensions text
     ctx.font = '14px Arial';
-    const dimensions = getDimensionsDisplay(product);
+    const dimensions = formatDimensions(product);
     ctx.fillText(dimensions, canvas.width / 2, qrImage.height + 40);
     
     // Add price text

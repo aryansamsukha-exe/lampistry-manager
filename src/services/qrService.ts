@@ -1,24 +1,18 @@
-
 import { Product } from "@/components/ProductCard";
 import QRCode from "qrcode";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
-// Generate QR code containing product details directly
+// Generate QR code containing a URL to the product details page
 export const generateQRCode = async (product: Product, size = 200): Promise<string> => {
   try {
-    // Format product details as a structured text string
-    const productDetails = JSON.stringify({
-      code: product.product_code,
-      price: product.price,
-      dimensions: formatDimensions(product),
-      description: product.description || 'No description available'
-    });
+    // Create a URL to the product details page
+    const productUrl = `${window.location.origin}/public/product?code=${encodeURIComponent(product.product_code)}`;
     
-    console.log("Generated product details for QR:", productDetails);
+    console.log("Generated product URL for QR:", productUrl);
     
-    // Generate QR code with the product details
-    return await QRCode.toDataURL(productDetails, {
+    // Generate QR code with the product URL
+    return await QRCode.toDataURL(productUrl, {
       width: size,
       margin: 2,
       color: {

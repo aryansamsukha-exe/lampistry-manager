@@ -49,6 +49,7 @@ const ScanQRCode: React.FC = () => {
       
       if (productCode) {
         console.log("Navigating to product with code:", productCode);
+        // Ensure we're using the public product route that doesn't require authentication
         const publicProductUrl = `/public/product?code=${encodeURIComponent(productCode)}`;
         console.log("Public product URL:", publicProductUrl);
         navigate(publicProductUrl);

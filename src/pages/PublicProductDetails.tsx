@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +33,7 @@ const PublicProductDetails: React.FC = () => {
           setProduct(productData);
         } else {
           console.log("No product found with code:", productCode);
+          toast.error("Product not found");
         }
       } catch (error) {
         console.error("Error fetching product:", error);
@@ -86,7 +86,7 @@ const PublicProductDetails: React.FC = () => {
         <p className="text-muted-foreground text-center mb-6">
           The product you're looking for cannot be found or has been removed.
         </p>
-        <Button variant="outline" onClick={handleBackButton}>
+        <Button variant="outline" onClick={() => window.history.back()}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Go Back
         </Button>

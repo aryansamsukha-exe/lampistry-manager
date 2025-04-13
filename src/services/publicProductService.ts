@@ -47,6 +47,7 @@ export const getPublicProductByCode = async (productCode: string): Promise<Produ
       imageUrl: imageData?.image_url
     };
     
+    console.log("Successfully retrieved public product:", product);
     return product;
   } catch (error) {
     console.error('Error getting public product:', error);

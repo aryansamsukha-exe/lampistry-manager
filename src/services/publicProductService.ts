@@ -9,7 +9,7 @@ export const getPublicProductByCode = async (productCode: string): Promise<Produ
   try {
     console.log("Getting public product with code:", productCode);
     
-    // Get the product without user_id filter for public access
+    // Create a new supabase client for public access without auth requirements
     const { data, error } = await supabase
       .from('products')
       .select('*')

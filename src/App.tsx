@@ -49,8 +49,10 @@ const AppRoutes = () => (
     <Route path="/" element={<Index />} />
     <Route path="/login" element={<Login />} />
     
-    {/* Public routes - no authentication required */}
+    {/* Public routes - no authentication required and accessible externally */}
     <Route path="/public/product" element={<PublicProductDetails />} />
+    
+    {/* Scanner route - accessible without auth for QR scanning */}
     <Route path="/scan" element={<ScanQRCode />} />
     
     {/* Protected routes */}

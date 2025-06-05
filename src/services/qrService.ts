@@ -1,12 +1,13 @@
+
 import { Product } from "@/components/ProductCard";
 import QRCode from "qrcode";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
-// Generate QR code containing a URL to the product details page
+// Generate QR code containing a URL to the public product details page
 export const generateQRCode = async (product: Product, size = 200): Promise<string> => {
   try {
-    // Create a URL to the product details page
+    // Create a URL to the public product details page that works for external scanners
     const productUrl = `${window.location.origin}/public/product?code=${encodeURIComponent(product.product_code)}`;
     
     console.log("Generated product URL for QR:", productUrl);

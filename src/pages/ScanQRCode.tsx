@@ -32,7 +32,7 @@ const ScanQRCode: React.FC = () => {
           // Try to extract code from pathname
           const pathParts = url.pathname.split('/');
           const lastPart = pathParts[pathParts.length - 1];
-          if (lastPart && /^[A-Za-z0-9-]+$/.test(lastPart)) {
+          if (lastPart && /^[A-Za-z0-9._-]+$/.test(lastPart)) {
             productCode = lastPart;
             console.log("Extracted product code from pathname:", productCode);
           }
@@ -40,8 +40,9 @@ const ScanQRCode: React.FC = () => {
       } catch (error) {
         console.log("Not a URL, checking if direct product code:", decodedText);
         // Not a URL, check if it's a direct product code
-        if (decodedText.trim() !== '' && /^[A-Za-z0-9-]+$/.test(decodedText.trim())) {
-          productCode = decodedText.trim();
+        const trimmed = decodedText.trim();
+        if (trimmed !== '' && /^[A-Za-z0-9._/-]+$/.test(trimmed)) {
+          productCode = trimmed;
           console.log("Using direct product code:", productCode);
         }
       }

@@ -4,12 +4,17 @@ import QRCode from "qrcode";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
+const getPublicAppBaseUrl = (): string => {
+  const fromEnv = import.meta.env.VITE_PUBLIC_APP_URL as string | undefined;
+  return (fromEnv?.trim() || window.location.origin).replace(/\/$/, "");
+};
+
 // Generate QR code containing a URL to the public product details page
 export const generateQRCode = async (product: Product, size = 200): Promise<string> => {
   try {
-    // Create a URL to the public product details page that works for external scanners
-    const productUrl = `${window.location.origin}/public/product?code=${encodeURIComponent(product.product_code)}`;
-    
+    // Prefer VITE_PUBLIC_APP_URL so printed QRs work on phones (not localhost)
+    const productUrl = `${getPublicAppBaseUrl()}/public/product?code=${encodeURIComponent(product.product_code)}`;
+
     console.log("Generated product URL for QR:", productUrl);
     
     // Generate QR code with the product URL

@@ -6,7 +6,15 @@ import { saveAs } from "file-saver";
 
 const getPublicAppBaseUrl = (): string => {
   const fromEnv = import.meta.env.VITE_PUBLIC_APP_URL as string | undefined;
-  return (fromEnv?.trim() || window.location.origin).replace(/\/$/, "");
+  // Prefer env, then current origin; fall back to production host for printed QRs
+  const fallback = "https://productmanagement.vercel.app";
+  const origin = typeof window !== "undefined" ? window.location.origin : fallback;
+  const isLocal =
+    origin.includes("localhost") ||
+    origin.includes("127.0.0.1") ||
+    origin.startsWith("http://192.") ||
+    origin.startsWith("http://10.");
+  return (fromEnv?.trim() || (isLocal ? fallback : origin) || fallback).replace(/\/$/, "");
 };
 
 // Generate QR code containing a URL to the public product details page

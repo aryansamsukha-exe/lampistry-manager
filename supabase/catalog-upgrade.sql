@@ -60,11 +60,33 @@ CREATE POLICY "Users manage own catalog products" ON public.catalog_products
     EXISTS (SELECT 1 FROM public.catalogs c WHERE c.id = catalog_id AND c.user_id = auth.uid())
   );
 
--- Public QR access is limited to an exact UUID lookup via this function. It does
--- not make the products or product_images tables broadly readable to anonymous users.
-DROP POLICY IF EXISTS "Public can read products" ON public.products;
-DROP POLICY IF EXISTS "Public can read product images" ON public.product_images;
+-- ── products & product_images RLS ──────────────────────────────────────────
+-- Authenticated users can read and manage only their OWN rows.
+-- Anonymous users have NO direct table access (QR scanning uses the secure
+-- get_public_product() function below instead of a broad SELECT policy).
 
+-- products
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public can read products" ON public.products;
+DROP POLICY IF EXISTS "Users manage own products" ON public.products;
+CREATE POLICY "Users manage own products" ON public.products
+  FOR ALL TO authenticated
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+-- product_images
+ALTER TABLE public.product_images ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public can read product images" ON public.product_images;
+DROP POLICY IF EXISTS "Users manage own product images" ON public.product_images;
+CREATE POLICY "Users manage own product images" ON public.product_images
+  FOR ALL TO authenticated
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+-- ── Secure public QR lookup function ────────────────────────────────────────
+-- SECURITY DEFINER means it runs as the function owner (bypasses RLS) so that
+-- anonymous users can fetch exactly one product by UUID without having any
+-- direct SELECT permission on the products / product_images tables.
 CREATE OR REPLACE FUNCTION public.get_public_product(product_uuid UUID)
 RETURNS TABLE (
   id UUID, sno INTEGER, product_code TEXT, dimensions TEXT, length TEXT, width TEXT,
@@ -79,3 +101,4 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   FROM public.products p WHERE p.id = product_uuid LIMIT 1;
 $$;
 GRANT EXECUTE ON FUNCTION public.get_public_product(UUID) TO anon, authenticated;
+

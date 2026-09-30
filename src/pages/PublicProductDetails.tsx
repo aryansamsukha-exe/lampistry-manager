@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -8,25 +8,26 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, ImageIcon, Loader, Package, ExternalLink } from "lucide-react";
 import { Product } from "@/components/ProductCard";
 import { toast } from "sonner";
-import { getPublicProductByCode } from "@/services/publicProductService";
+import { getPublicProductByCode, getPublicProductById } from "@/services/publicProductService";
 
 const PublicProductDetails: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const { productId } = useParams();
   const productCode = searchParams.get("code");
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchProductDetails = async () => {
-      if (!productCode) {
+      if (!productCode && !productId) {
         setIsLoading(false);
         return;
       }
 
-      console.log("Fetching public product with code:", productCode);
+      console.log("Fetching public product:", productId || productCode);
       
       try {
-        const productData = await getPublicProductByCode(productCode);
+        const productData = productId ? await getPublicProductById(productId) : await getPublicProductByCode(productCode!);
         
         if (productData) {
           console.log("Product data retrieved:", productData);
@@ -44,7 +45,7 @@ const PublicProductDetails: React.FC = () => {
     };
 
     fetchProductDetails();
-  }, [productCode]);
+  }, [productCode, productId]);
 
   // Format dimensions for display in the standardized format "length × width × height"
   const getDimensionsDisplay = () => {

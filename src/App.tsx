@@ -51,7 +51,10 @@ const AppRoutes = () => (
     <Route path="/login" element={<Login />} />
     
     {/* Public routes - no authentication required and accessible externally */}
+    {/* Legacy: /public/product?code=XYZ */}
     <Route path="/public/product" element={<PublicProductDetails />} />
+    {/* New: /public/product/:productId (UUID-based) */}
+    <Route path="/public/product/:productId" element={<PublicProductDetails />} />
     
     {/* Scanner route - accessible without auth for QR scanning */}
     <Route path="/scan" element={<ScanQRCode />} />

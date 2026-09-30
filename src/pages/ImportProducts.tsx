@@ -12,6 +12,8 @@ import { processExcelFile, getProducts, saveProducts, saveProductImage, processI
 import { Product } from "@/components/ProductCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { createImportBatch, updateImportBatchCount } from "@/services/importBatchService";
 
 const ImportProducts: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -21,6 +23,8 @@ const ImportProducts: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [hasExistingProducts, setHasExistingProducts] = useState(false);
+  const [batchName, setBatchName] = useState("");
+  const [importSummary, setImportSummary] = useState<{ batchId: string; batchName: string; products: number; images: number } | null>(null);
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
 
@@ -79,10 +83,12 @@ const ImportProducts: React.FC = () => {
     setIsLoading(true);
     setErrorMessage(null);
     setProgress(0);
+    setImportSummary(null);
     
     try {
       console.log('Processing file:', excelFile.name, excelFile.type, `${(excelFile.size / 1024).toFixed(2)} KB`);
       
+      const batch = await createImportBatch(excelFile.name, batchName);
       const importedProducts = await processExcelFile(excelFile);
       
       if (importedProducts.length === 0) {
@@ -97,30 +103,24 @@ const ImportProducts: React.FC = () => {
 
       try {
         // Save products with upsert approach to handle duplicates
-        await saveProducts(importedProducts);
+        await saveProducts(importedProducts, batch.id);
+        await updateImportBatchCount(batch.id, importedProducts.length);
         setProgress(50);
+        let importedImages = 0;
         
         if (zipFile) {
-          await handleImageUpload();
+          importedImages = await handleImageUpload();
         } else {
           setProgress(100);
         }
         
+        setImportSummary({ batchId: batch.id, batchName: batch.batch_name, products: importedProducts.length, images: importedImages });
         toast.success(`Successfully imported ${importedProducts.length} products`);
-        
-        // Give user time to see the 100% progress before navigating
-        setTimeout(() => {
-          navigate("/products");
-        }, 1000);
         
       } catch (saveError) {
         console.error('Error saving products:', saveError);
         setErrorMessage("Some products were saved, but not all. You can view the imported products on the products page.");
         toast.warning("Partial import successful. Some products may not have been saved.");
-        // Still navigate to products page to show what was successfully imported
-        setTimeout(() => {
-          navigate("/products");
-        }, 2000);
       }
     } catch (error) {
       console.error('Import error:', error);
@@ -132,15 +132,15 @@ const ImportProducts: React.FC = () => {
     }
   };
 
-  const handleImageUpload = async () => {
+  const handleImageUpload = async (): Promise<number> => {
     if (!zipFile) {
       toast.error("Please select a ZIP file with images");
-      return;
+      return 0;
     }
 
     if (!user) {
       toast.error("You must be logged in to upload images");
-      return;
+      return 0;
     }
 
     setIsImageProcessing(true);
@@ -178,17 +178,18 @@ const ImportProducts: React.FC = () => {
         
         // Navigate to products page if this was a standalone image upload
         if (!excelFile) {
-          setTimeout(() => {
-            navigate("/products");
-          }, 1000);
+          setTimeout(() => navigate("/products"), 1000);
         }
+        return savedImages;
       } else {
         toast.warning("No valid images found in ZIP file");
       }
+      return 0;
     } catch (zipError) {
       console.error('Error processing ZIP:', zipError);
       toast.error("Failed to process ZIP file");
       setErrorMessage("Failed to process ZIP file. Please check the file format.");
+      return 0;
     } finally {
       setIsImageProcessing(false);
       if (!excelFile) {
@@ -224,7 +225,7 @@ const ImportProducts: React.FC = () => {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Import Products</h1>
             <p className="text-muted-foreground mt-2">
-              Import your product data from Excel and upload product images.
+              Each Excel import becomes a collection you can use to create a catalog.
             </p>
           </div>
 
@@ -260,6 +261,10 @@ const ImportProducts: React.FC = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-medium">Collection name <span className="font-normal text-muted-foreground">(optional)</span></label>
+                  <Input value={batchName} onChange={(event) => setBatchName(event.target.value)} placeholder="October 2026 Collection" />
+                </div>
                 <FileUploader
                   onFileSelect={handleExcelSelect}
                   accept=".xlsx,.xls"
@@ -315,6 +320,14 @@ const ImportProducts: React.FC = () => {
               </CardFooter>
             </Card>
           </div>
+
+          {importSummary && (
+            <Card className="border-primary/30 bg-primary/5">
+              <CardHeader><CardTitle>Import Complete</CardTitle><CardDescription>{importSummary.batchName}</CardDescription></CardHeader>
+              <CardContent className="space-y-1 text-sm"><p>✓ {importSummary.products} products imported</p><p>✓ {importSummary.images} product images matched</p>{importSummary.images < importSummary.products && <p className="text-muted-foreground">{importSummary.products - importSummary.images} products have no image yet.</p>}</CardContent>
+              <CardFooter className="gap-3"><Button variant="outline" onClick={() => navigate("/products")}>View Products</Button><Button onClick={() => navigate(`/catalog?batch=${importSummary.batchId}`)}>Create Catalog</Button></CardFooter>
+            </Card>
+          )}
 
           <div className="flex justify-end gap-4">
             <Button

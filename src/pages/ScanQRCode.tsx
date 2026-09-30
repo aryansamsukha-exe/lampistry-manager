@@ -19,13 +19,16 @@ const ScanQRCode: React.FC = () => {
     try {
       // Try to extract product code from the scanned URL
       let productCode: string | null = null;
+      let publicPath: string | null = null;
       
       try {
         // Try to parse as URL
         const url = new URL(decodedText);
         console.log("Parsed URL:", url.toString());
         
-        if (url.searchParams.has('code')) {
+        if (/^\/public\/product\/[0-9a-f-]+$/i.test(url.pathname)) {
+          publicPath = url.pathname;
+        } else if (url.searchParams.has('code')) {
           productCode = url.searchParams.get('code');
           console.log("Found product code in URL parameter:", productCode);
         } else {
@@ -47,7 +50,10 @@ const ScanQRCode: React.FC = () => {
         }
       }
       
-      if (productCode) {
+      if (publicPath) {
+        navigate(publicPath);
+        toast.success("QR code scanned successfully!");
+      } else if (productCode) {
         console.log("Navigating to product with code:", productCode);
         // Redirect to public product page
         const publicProductUrl = `/public/product?code=${encodeURIComponent(productCode)}`;

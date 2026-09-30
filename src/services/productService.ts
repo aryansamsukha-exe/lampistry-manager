@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { withCalculatedCbm } from '@/services/catalogService';
 
 // Get products for the current user
-export const getProducts = async (): Promise<Product[]> => {
+export const getProducts = async (importBatchId?: string | null): Promise<Product[]> => {
   try {
     const { data: session } = await supabase.auth.getSession();
     if (!session.session?.user) {
@@ -17,10 +17,12 @@ export const getProducts = async (): Promise<Product[]> => {
     
     console.log('Getting products for user:', session.session.user.id);
     
-    const { data, error } = await supabase
+    let query = supabase
       .from('products')
       .select('*')
       .order('sno', { ascending: true });
+    if (importBatchId) query = query.eq('import_batch_id', importBatchId);
+    const { data, error } = await query;
     
     if (error) {
       console.error('Error fetching products:', error);
@@ -40,6 +42,8 @@ export const getProducts = async (): Promise<Product[]> => {
       price: item.price,
       cbm: item.cbm,
       description: item.description || '',
+      import_batch_id: item.import_batch_id,
+      created_at: item.created_at,
     }));
     
     await enhanceProductsWithImages(products);
@@ -52,7 +56,7 @@ export const getProducts = async (): Promise<Product[]> => {
 };
 
 // Save products for the current user
-export const saveProducts = async (products: Product[]): Promise<void> => {
+export const saveProducts = async (products: Product[], importBatchId?: string): Promise<void> => {
   try {
     const { data: session } = await supabase.auth.getSession();
     if (!session.session?.user) {
@@ -74,6 +78,7 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
       price: product.price,
       cbm: product.cbm,
       description: product.description,
+      import_batch_id: importBatchId || product.import_batch_id || null,
       user_id: userId
     }));
     

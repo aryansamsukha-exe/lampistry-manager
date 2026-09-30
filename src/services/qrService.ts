@@ -21,7 +21,8 @@ const getPublicAppBaseUrl = (): string => {
 export const generateQRCode = async (product: Product, size = 200): Promise<string> => {
   try {
     // Prefer VITE_PUBLIC_APP_URL so printed QRs work on phones (not localhost)
-    const productUrl = `${getPublicAppBaseUrl()}/public/product?code=${encodeURIComponent(product.product_code)}`;
+    if (!product.id) throw new Error("A saved product ID is required to create a public QR code.");
+    const productUrl = `${getPublicAppBaseUrl()}/public/product/${encodeURIComponent(product.id)}`;
 
     console.log("Generated product URL for QR:", productUrl);
     

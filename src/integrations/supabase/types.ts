@@ -33,6 +33,40 @@ export type Database = {
         }
         Relationships: []
       }
+      product_import_batches: {
+        Row: {
+          id: string
+          user_id: string
+          batch_name: string
+          source_file_name: string | null
+          product_count: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          batch_name: string
+          source_file_name?: string | null
+          product_count?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          batch_name?: string
+          source_file_name?: string | null
+          product_count?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_import_batches_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       products: {
         Row: {
           cbm: string
@@ -41,6 +75,7 @@ export type Database = {
           dimensions: string | null
           height: string | null
           id: string
+          import_batch_id: string | null
           length: string | null
           price: number
           product_code: string
@@ -55,6 +90,7 @@ export type Database = {
           dimensions?: string | null
           height?: string | null
           id?: string
+          import_batch_id?: string | null
           length?: string | null
           price?: number
           product_code: string
@@ -69,6 +105,7 @@ export type Database = {
           dimensions?: string | null
           height?: string | null
           id?: string
+          import_batch_id?: string | null
           length?: string | null
           price?: number
           product_code?: string
@@ -76,14 +113,119 @@ export type Database = {
           user_id?: string
           width?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_import_batch_id_fkey"
+            columns: ["import_batch_id"]
+            referencedRelation: "product_import_batches"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      catalogs: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          description: string | null
+          import_batch_id: string | null
+          layout: string
+          cover_title: string | null
+          cover_subtitle: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          description?: string | null
+          import_batch_id?: string | null
+          layout?: string
+          cover_title?: string | null
+          cover_subtitle?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          description?: string | null
+          import_batch_id?: string | null
+          layout?: string
+          cover_title?: string | null
+          cover_subtitle?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalogs_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      catalog_products: {
+        Row: {
+          id: string
+          catalog_id: string
+          product_id: string
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          catalog_id: string
+          product_id: string
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          catalog_id?: string
+          product_id?: string
+          sort_order?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_products_catalog_id_fkey"
+            columns: ["catalog_id"]
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catalog_products_product_id_fkey"
+            columns: ["product_id"]
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_public_product: {
+        Args: { product_uuid: string }
+        Returns: {
+          id: string
+          sno: number
+          product_code: string
+          dimensions: string | null
+          length: string | null
+          width: string | null
+          height: string | null
+          price: number
+          cbm: string
+          description: string | null
+          image_url: string | null
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

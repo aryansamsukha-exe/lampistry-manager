@@ -1,6 +1,19 @@
 
 import { supabase } from "@/integrations/supabase/client";
-import { Product } from "@/components/ProductCard";
+import type { Product } from "@/components/ProductCard";
+
+const db = supabase as any;
+
+export const getPublicProductById = async (productId: string): Promise<Product | null> => {
+  if (!productId) return null;
+  const { data, error } = await db.rpc("get_public_product", { product_uuid: productId }).maybeSingle();
+  if (error || !data) return null;
+  return {
+    id: data.id, sno: data.sno, product_code: data.product_code, dimensions: data.dimensions,
+    length: data.length, width: data.width, height: data.height, price: Number(data.price || 0),
+    cbm: data.cbm, description: data.description || "", imageUrl: data.image_url
+  };
+};
 
 // Get a product by code — public access (requires anon SELECT RLS policies)
 export const getPublicProductByCode = async (productCode: string): Promise<Product | null> => {

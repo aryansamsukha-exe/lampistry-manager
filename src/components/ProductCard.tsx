@@ -23,6 +23,8 @@ export type Product = {
   cbm: string;
   description: string;
   imageUrl?: string;
+  import_batch_id?: string | null;
+  created_at?: string;
 };
 
 interface ProductCardProps {

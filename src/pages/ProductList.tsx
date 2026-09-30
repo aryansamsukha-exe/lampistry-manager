@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { Search, QrCode, Download, Upload, Plus, Loader, ScanLine } from "lucide-react";
+import { Search, QrCode, Download, Upload, Plus, Loader, ScanLine, BookOpen } from "lucide-react";
 import ProductCard, { Product } from "@/components/ProductCard";
 import { getProducts, searchProducts, getProductByCode } from "@/services/productService";
 import { downloadQRCode, downloadAllQRCodes } from "@/services/qrService";
@@ -124,6 +124,9 @@ const ProductList: React.FC = () => {
               </p>
             </div>
             <div className="flex gap-2 self-stretch sm:self-auto">
+              <Button variant="outline" onClick={() => navigate("/catalog")} className="flex-shrink-0">
+                <BookOpen className="mr-2 h-4 w-4" />Create Catalog
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => navigate("/scan")}

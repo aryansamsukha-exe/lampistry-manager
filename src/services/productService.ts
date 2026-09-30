@@ -1,10 +1,10 @@
 
-import { Product } from "@/components/ProductCard";
+import type { Product } from "@/components/ProductCard";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { supabase } from "@/integrations/supabase/client";
-import { v4 as uuidv4 } from 'uuid';
+import { withCalculatedCbm } from '@/services/catalogService';
 
 // Get products for the current user
 export const getProducts = async (): Promise<Product[]> => {
@@ -44,7 +44,7 @@ export const getProducts = async (): Promise<Product[]> => {
     
     await enhanceProductsWithImages(products);
     
-    return products;
+    return products.map(withCalculatedCbm);
   } catch (error) {
     console.error('Error getting products:', error);
     return [];
@@ -64,7 +64,7 @@ export const saveProducts = async (products: Product[]): Promise<void> => {
     console.log('Saving products for user:', userId);
     console.log('Number of products to save:', products.length);
     
-    const productsToUpsert = products.map(product => ({
+    const productsToUpsert = products.map(withCalculatedCbm).map(product => ({
       sno: product.sno,
       product_code: product.product_code,
       dimensions: product.dimensions,
@@ -458,7 +458,7 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
             product.dimensions = `${product.length} × ${product.width} × ${product.height}`;
           }
           
-          products.push(product);
+          products.push(withCalculatedCbm(product));
         }
         
         if (products.length === 0) {

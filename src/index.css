@@ -165,3 +165,12 @@ input[type="file"]::file-selector-button {
   border: 0;
   margin-right: 16px;
 }
+
+@media print {
+  @page { margin: 12mm; size: A4; }
+  .catalog-controls { display: none !important; }
+  .catalog-print-area { max-width: none !important; padding: 0 !important; }
+  .catalog-hero { box-shadow: none !important; break-after: avoid; }
+  .catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px !important; }
+  .catalog-card { break-inside: avoid; box-shadow: none !important; }
+}

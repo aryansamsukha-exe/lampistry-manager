@@ -14,6 +14,7 @@ import QRCodes from "./pages/QRCodes";
 import ScanQRCode from "./pages/ScanQRCode";
 import NotFound from "./pages/NotFound";
 import PublicProductDetails from "./pages/PublicProductDetails";
+import Catalog from "./pages/Catalog";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,6 +70,11 @@ const AppRoutes = () => (
     <Route path="/qr-codes" element={
       <SecureRoute>
         <QRCodes />
+      </SecureRoute>
+    } />
+    <Route path="/catalog" element={
+      <SecureRoute>
+        <Catalog />
       </SecureRoute>
     } />
     

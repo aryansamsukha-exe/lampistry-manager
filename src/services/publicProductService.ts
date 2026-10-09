@@ -11,7 +11,9 @@ export const getPublicProductById = async (productId: string): Promise<Product |
   return {
     id: data.id, sno: data.sno, product_code: data.product_code, dimensions: data.dimensions,
     length: data.length, width: data.width, height: data.height, price: Number(data.price || 0),
-    cbm: data.cbm, description: data.description || "", imageUrl: data.image_url
+    cbm: data.cbm, description: data.description || "", imageUrl: data.image_url,
+    finish: data.finish, packing_length: data.packing_length, packing_width: data.packing_width,
+    packing_height: data.packing_height, net_weight: data.net_weight
   };
 };
 
@@ -62,6 +64,11 @@ export const getPublicProductByCode = async (productCode: string): Promise<Produ
       price: data.price,
       cbm: data.cbm,
       description: data.description || '',
+      finish: data.finish,
+      packing_length: data.packing_length,
+      packing_width: data.packing_width,
+      packing_height: data.packing_height,
+      net_weight: data.net_weight,
       imageUrl: imageData?.image_url
     };
 

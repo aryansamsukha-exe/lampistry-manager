@@ -8,12 +8,19 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { Loader, FilePlus2, FileUp, PackageCheck, AlertCircle, Image as ImageIcon, RefreshCw } from "lucide-react";
 import FileUploader from "@/components/FileUploader";
-import { processExcelFile, getProducts, saveProducts, saveProductImage, processImageZip } from "@/services/productService";
+import { hasAnyProducts, saveProducts, saveProductImage, processImageZip } from "@/services/productService";
+import { processExcelFile } from "@/services/excelImportService";
+import { formatBytes } from "@/services/imageCompression";
 import { Product } from "@/components/ProductCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { createImportBatch, updateImportBatchCount } from "@/services/importBatchService";
+import {
+  createImportBatch, getImportBatches, refreshImportBatchCount, saveBatchFilter, type ImportBatch,
+} from "@/services/importBatchService";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 const ImportProducts: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -24,7 +31,10 @@ const ImportProducts: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [hasExistingProducts, setHasExistingProducts] = useState(false);
   const [batchName, setBatchName] = useState("");
-  const [importSummary, setImportSummary] = useState<{ batchId: string; batchName: string; products: number; images: number } | null>(null);
+  const [batches, setBatches] = useState<ImportBatch[]>([]);
+  const [collectionMode, setCollectionMode] = useState<"new" | "existing">("new");
+  const [targetBatchId, setTargetBatchId] = useState("");
+  const [importSummary, setImportSummary] = useState<{ batchId: string; batchName: string; products: number; images: number; skipped: string[] } | null>(null);
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
 
@@ -33,8 +43,7 @@ const ImportProducts: React.FC = () => {
     const checkExistingProducts = async () => {
       if (isAuthenticated && user) {
         try {
-          const products = await getProducts();
-          setHasExistingProducts(products.length > 0);
+          setHasExistingProducts(await hasAnyProducts());
         } catch (err) {
           console.error("Error checking existing products:", err);
         }
@@ -43,6 +52,16 @@ const ImportProducts: React.FC = () => {
 
     checkExistingProducts();
   }, [isAuthenticated, user]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    getImportBatches()
+      .then((list) => {
+        setBatches(list);
+        setTargetBatchId((current) => current || list[0]?.id || "");
+      })
+      .catch((err) => console.error("Error loading collections:", err));
+  }, [isAuthenticated, user, importSummary]);
 
   React.useEffect(() => {
     if (!isAuthenticated) {
@@ -88,7 +107,6 @@ const ImportProducts: React.FC = () => {
     try {
       console.log('Processing file:', excelFile.name, excelFile.type, `${(excelFile.size / 1024).toFixed(2)} KB`);
       
-      const batch = await createImportBatch(excelFile.name, batchName);
       const importedProducts = await processExcelFile(excelFile);
       
       if (importedProducts.length === 0) {
@@ -101,21 +119,35 @@ const ImportProducts: React.FC = () => {
       console.log('Successfully imported products:', importedProducts.length);
       console.log('First product as sample:', importedProducts[0]);
 
+      const existingBatch = collectionMode === "existing" ? batches.find((b) => b.id === targetBatchId) : undefined;
+      if (collectionMode === "existing" && !existingBatch) {
+        throw new Error("Please choose the collection to add these products to.");
+      }
+      const batch = existingBatch ?? await createImportBatch(excelFile.name, batchName);
+
       try {
-        // Save products with upsert approach to handle duplicates
-        await saveProducts(importedProducts, batch.id);
-        await updateImportBatchCount(batch.id, importedProducts.length);
-        setProgress(50);
+        const { saved, skipped } = await saveProducts(importedProducts, batch.id);
+        await refreshImportBatchCount(batch.id);
+        setProgress(zipFile ? 25 : 30);
+
+        const savedCodes = new Set(saved);
+        const withSheetImages = importedProducts.filter((p) => p.imageUrl && savedCodes.has(p.product_code));
         let importedImages = 0;
-        
+        for (const product of withSheetImages) {
+          await saveProductImage(product.product_code, product.imageUrl!);
+          importedImages++;
+          setProgress(30 + Math.round((importedImages / withSheetImages.length) * (zipFile ? 20 : 70)));
+        }
+
         if (zipFile) {
-          importedImages = await handleImageUpload();
+          importedImages += await handleImageUpload();
         } else {
           setProgress(100);
         }
         
-        setImportSummary({ batchId: batch.id, batchName: batch.batch_name, products: importedProducts.length, images: importedImages });
-        toast.success(`Successfully imported ${importedProducts.length} products`);
+        saveBatchFilter(batch.id);
+        setImportSummary({ batchId: batch.id, batchName: batch.batch_name, products: saved.length, images: importedImages, skipped });
+        toast.success(`Imported ${saved.length} products${importedImages ? ` with ${importedImages} images` : ""}`);
         
       } catch (saveError) {
         console.error('Error saving products:', saveError);
@@ -148,8 +180,11 @@ const ImportProducts: React.FC = () => {
     setProgress(zipFile && !excelFile ? 0 : 50); // Start at 0 for standalone upload, 50 for combined
     
     try {
-      toast.info("Processing image ZIP file...");
-      const imageMap = await processImageZip(zipFile);
+      toast.info("Compressing images from ZIP file...");
+      const { images: imageMap, originalBytes, compressedBytes } = await processImageZip(zipFile);
+      if (imageMap.size > 0) {
+        toast.info(`Compressed ${imageMap.size} images: ${formatBytes(originalBytes)} → ${formatBytes(compressedBytes)}`);
+      }
       
       if (imageMap.size > 0) {
         let savedImages = 0;
@@ -261,20 +296,58 @@ const ImportProducts: React.FC = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="mb-4">
-                  <label className="mb-2 block text-sm font-medium">Collection name <span className="font-normal text-muted-foreground">(optional)</span></label>
-                  <Input value={batchName} onChange={(event) => setBatchName(event.target.value)} placeholder="October 2026 Collection" />
+                <div className="mb-4 space-y-3">
+                  <RadioGroup
+                    value={collectionMode}
+                    onValueChange={(value) => setCollectionMode(value as "new" | "existing")}
+                    className="flex gap-6"
+                  >
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="new" id="collection-new" />
+                      <Label htmlFor="collection-new">New collection</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="existing" id="collection-existing" disabled={batches.length === 0} />
+                      <Label htmlFor="collection-existing" className={batches.length === 0 ? "text-muted-foreground" : ""}>
+                        Add to existing collection
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                  {collectionMode === "new" ? (
+                    <div>
+                      <label className="mb-2 block text-sm font-medium">Collection name <span className="font-normal text-muted-foreground">(optional)</span></label>
+                      <Input value={batchName} onChange={(event) => setBatchName(event.target.value)} placeholder="October 2026 Collection" />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="mb-2 block text-sm font-medium">Collection</label>
+                      <Select value={targetBatchId} onValueChange={setTargetBatchId}>
+                        <SelectTrigger><SelectValue placeholder="Choose a collection" /></SelectTrigger>
+                        <SelectContent>
+                          {batches.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.batch_name} ({b.product_count} products)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        New item codes are added to this collection. Codes already in the app are left unchanged.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <FileUploader
                   onFileSelect={handleExcelSelect}
                   accept=".xlsx,.xls"
+                  maxSize={100}
                   label="Upload Excel File"
                   isLoading={isLoading}
                 />
               </CardContent>
               <CardFooter className="flex flex-col space-y-2">
                 <p className="text-xs text-muted-foreground w-full">
-                  The Excel file should contain columns: Sno/S.No, Item Code/product_code, Size/dimensions, price, cbm, description
+                  The Excel file should contain columns: S.No, Item Code, Description, Item Size (L, W, H), Rate/Price. Packing Size, Finish, Cbm, Net Weight and photos placed in the Photo column are also imported. Blank prices are saved as $0.00.
                 </p>
               </CardFooter>
             </Card>
@@ -293,13 +366,14 @@ const ImportProducts: React.FC = () => {
                 <FileUploader
                   onFileSelect={handleZipSelect}
                   accept=".zip"
+                  maxSize={500}
                   label="Upload ZIP File"
                   isLoading={isImageProcessing}
                 />
               </CardContent>
               <CardFooter className="flex flex-col space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  Image files should be named with the corresponding product_code (e.g., ABC123.jpg).
+                  Image files should be named with the corresponding product_code (e.g., ABC123.jpg). Images are compressed automatically (max 1200 px).
                 </p>
                 {hasExistingProducts && (
                   <Button 
@@ -324,7 +398,7 @@ const ImportProducts: React.FC = () => {
           {importSummary && (
             <Card className="border-primary/30 bg-primary/5">
               <CardHeader><CardTitle>Import Complete</CardTitle><CardDescription>{importSummary.batchName}</CardDescription></CardHeader>
-              <CardContent className="space-y-1 text-sm"><p>✓ {importSummary.products} products imported</p><p>✓ {importSummary.images} product images matched</p>{importSummary.images < importSummary.products && <p className="text-muted-foreground">{importSummary.products - importSummary.images} products have no image yet.</p>}</CardContent>
+              <CardContent className="space-y-1 text-sm"><p>✓ {importSummary.products} products imported</p><p>✓ {importSummary.images} product images matched</p>{importSummary.images < importSummary.products && <p className="text-muted-foreground">{importSummary.products - importSummary.images} products have no image yet.</p>}{importSummary.skipped.length > 0 && <p className="text-amber-700">{importSummary.skipped.length} item codes already existed and were left unchanged: {importSummary.skipped.join(", ")}</p>}</CardContent>
               <CardFooter className="gap-3"><Button variant="outline" onClick={() => navigate("/products")}>View Products</Button><Button onClick={() => navigate(`/catalog?batch=${importSummary.batchId}`)}>Create Catalog</Button></CardFooter>
             </Card>
           )}

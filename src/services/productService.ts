@@ -1,13 +1,14 @@
 
 import type { Product } from "@/components/ProductCard";
 import { toast } from "sonner";
-import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { supabase } from "@/integrations/supabase/client";
 import { withCalculatedCbm } from '@/services/catalogService';
+import { compressImageOrKeep, dataUrlBytes } from '@/services/imageCompression';
+import { isInlineImage, removeImageFiles, uploadImageFile } from '@/services/imageStorageService';
 
 // Get products for the current user
-export const getProducts = async (importBatchId?: string | null): Promise<Product[]> => {
+export const getProducts = async (importBatchId?: string | null, withImages = true): Promise<Product[]> => {
   try {
     const { data: session } = await supabase.auth.getSession();
     if (!session.session?.user) {
@@ -42,11 +43,16 @@ export const getProducts = async (importBatchId?: string | null): Promise<Produc
       price: item.price,
       cbm: item.cbm,
       description: item.description || '',
+      finish: item.finish ?? undefined,
+      packing_length: item.packing_length ?? undefined,
+      packing_width: item.packing_width ?? undefined,
+      packing_height: item.packing_height ?? undefined,
+      net_weight: item.net_weight ?? undefined,
       import_batch_id: item.import_batch_id,
       created_at: item.created_at,
     }));
     
-    await enhanceProductsWithImages(products);
+    if (withImages) await enhanceProductsWithImages(products);
     
     return products.map(withCalculatedCbm);
   } catch (error) {
@@ -55,20 +61,55 @@ export const getProducts = async (importBatchId?: string | null): Promise<Produc
   }
 };
 
-// Save products for the current user
-export const saveProducts = async (products: Product[], importBatchId?: string): Promise<void> => {
+export const hasAnyProducts = async (): Promise<boolean> => {
+  const { count, error } = await supabase.from('products').select('id', { count: 'exact', head: true });
+  if (error) throw error;
+  return (count ?? 0) > 0;
+};
+
+// Only send columns that have values so sheets without packing data still import
+// into databases where product-packing-details.sql has not been applied.
+const packingDetails = (product: Product) =>
+  Object.fromEntries(
+    (['finish', 'packing_length', 'packing_width', 'packing_height', 'net_weight'] as const)
+      .filter((key) => product[key])
+      .map((key) => [key, product[key]])
+  );
+
+const findExistingCodes = async (userId: string, codes: string[]): Promise<Set<string>> => {
+  const existing = new Set<string>();
+  for (let i = 0; i < codes.length; i += 100) {
+    const { data, error } = await supabase
+      .from('products')
+      .select('product_code')
+      .eq('user_id', userId)
+      .in('product_code', codes.slice(i, i + 100));
+    if (error) throw error;
+    data?.forEach((row) => existing.add(row.product_code));
+  }
+  return existing;
+};
+
+export type SaveProductsResult = { saved: string[]; skipped: string[] };
+
+// Save products for the current user. Codes the user already has are left untouched and reported as skipped.
+export const saveProducts = async (products: Product[], importBatchId?: string): Promise<SaveProductsResult> => {
   try {
     const { data: session } = await supabase.auth.getSession();
     if (!session.session?.user) {
       toast.error('You must be logged in to save products');
-      return;
+      return { saved: [], skipped: [] };
     }
     
     const userId = session.session.user.id;
     console.log('Saving products for user:', userId);
     console.log('Number of products to save:', products.length);
+
+    const existingCodes = await findExistingCodes(userId, products.map((p) => p.product_code));
+    const skipped = products.filter((p) => existingCodes.has(p.product_code)).map((p) => p.product_code);
+    const saved: string[] = [];
     
-    const productsToUpsert = products.map(withCalculatedCbm).map(product => ({
+    const productsToUpsert = products.filter((p) => !existingCodes.has(p.product_code)).map(withCalculatedCbm).map(product => ({
       sno: product.sno,
       product_code: product.product_code,
       dimensions: product.dimensions,
@@ -78,6 +119,7 @@ export const saveProducts = async (products: Product[], importBatchId?: string):
       price: product.price,
       cbm: product.cbm,
       description: product.description,
+      ...packingDetails(product),
       import_batch_id: importBatchId || product.import_batch_id || null,
       user_id: userId
     }));
@@ -101,21 +143,58 @@ export const saveProducts = async (products: Product[], importBatchId?: string):
         console.log('Continuing with next batch despite error');
       } else {
         successCount += batch.length;
+        saved.push(...batch.map((p) => p.product_code));
         console.log(`Successfully upserted batch ${i/batchSize + 1}, total progress: ${successCount}/${productsToUpsert.length}`);
       }
     }
     
-    if (successCount > 0) {
-      toast.success(`Products saved successfully (${successCount}/${productsToUpsert.length})`);
-    } else {
+    if (productsToUpsert.length > 0 && successCount === 0) {
       toast.error('Failed to save any products');
       throw new Error('Failed to save products');
     }
+    return { saved, skipped };
   } catch (error) {
     console.error('Error saving products:', error);
     toast.error('Failed to save products');
     throw error;
   }
+};
+
+export type ProductEdits = Pick<
+  Product,
+  'description' | 'price' | 'length' | 'width' | 'height' | 'finish' |
+  'packing_length' | 'packing_width' | 'packing_height' | 'net_weight'
+>;
+
+const PACKING_FIELDS = ['finish', 'packing_length', 'packing_width', 'packing_height', 'net_weight'] as const;
+
+// Update the editable details of a product. Returns the saved product.
+export const updateProduct = async (product: Product, edits: ProductEdits): Promise<Product> => {
+  const updated = withCalculatedCbm({ ...product, ...edits });
+  const clean = (value?: string) => value?.trim() || null;
+
+  const changes: Record<string, unknown> = {
+    description: updated.description.trim(),
+    price: updated.price,
+    length: clean(updated.length),
+    width: clean(updated.width),
+    height: clean(updated.height),
+    dimensions: updated.length && updated.width && updated.height
+      ? `${updated.length} × ${updated.width} × ${updated.height}`
+      : product.dimensions ?? null,
+    cbm: updated.cbm,
+  };
+  // Packing columns only exist once product-packing-details.sql has been applied.
+  if (PACKING_FIELDS.some((key) => product[key] || edits[key])) {
+    PACKING_FIELDS.forEach((key) => { changes[key] = clean(updated[key]); });
+  }
+
+  const { error } = await supabase.from('products').update(changes).eq('id', product.id);
+  if (error) {
+    console.error('Error updating product:', error);
+    throw error;
+  }
+  return updated;
 };
 
 // Delete a product by its ID
@@ -151,6 +230,13 @@ export const deleteProduct = async (productId: string): Promise<boolean> => {
     }
     
     // Delete associated images
+    const { data: imageRows } = await supabase
+      .from('product_images')
+      .select('image_url')
+      .eq('product_code', productData.product_code)
+      .eq('user_id', userId);
+    await removeImageFiles((imageRows ?? []).map((row) => row.image_url));
+
     const { error: imageDeleteError } = await supabase
       .from('product_images')
       .delete()
@@ -186,7 +272,10 @@ export const deleteProduct = async (productId: string): Promise<boolean> => {
   }
 };
 
-// Save a product image
+let storageWarningShown = false;
+
+// Save a product image. The image is uploaded to Storage and only its URL is stored; if Storage
+// is not set up yet (product-image-storage.sql not applied) the data URL is stored as before.
 export const saveProductImage = async (productCode: string, imageDataUrl: string): Promise<void> => {
   try {
     const { data: session } = await supabase.auth.getSession();
@@ -194,41 +283,38 @@ export const saveProductImage = async (productCode: string, imageDataUrl: string
       toast.error('You must be logged in to save product images');
       return;
     }
-    
+
     const userId = session.session.user.id;
-    console.log(`Saving image for product: ${productCode}`);
-    
-    const { data: existingImages } = await supabase
-      .from('product_images')
-      .select('id')
-      .eq('product_code', productCode)
-      .maybeSingle();
-    
-    if (existingImages) {
-      const { error } = await supabase
-        .from('product_images')
-        .update({ image_url: imageDataUrl })
-        .eq('product_code', productCode)
-        .eq('user_id', userId);
-      
-      if (error) {
-        console.error('Error updating product image:', error);
-        throw error;
-      }
-    } else {
-      const { error } = await supabase
-        .from('product_images')
-        .insert({
-          product_code: productCode,
-          image_url: imageDataUrl,
-          user_id: userId
-        });
-      
-      if (error) {
-        console.error('Error inserting product image:', error);
-        throw error;
+    let imageUrl = imageDataUrl;
+    if (isInlineImage(imageDataUrl)) {
+      try {
+        imageUrl = await uploadImageFile(userId, productCode, imageDataUrl);
+      } catch (uploadError) {
+        console.error('Upload to image storage failed, saving the image inline instead:', uploadError);
+        if (!storageWarningShown) {
+          storageWarningShown = true;
+          toast.warning('Photo storage is not set up, so photos are saved the slow way. Run supabase/product-image-storage.sql.');
+        }
       }
     }
+
+    const { data: existing } = await supabase
+      .from('product_images')
+      .select('id, image_url')
+      .eq('product_code', productCode)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const { error } = existing
+      ? await supabase.from('product_images').update({ image_url: imageUrl }).eq('id', existing.id)
+      : await supabase.from('product_images').insert({ product_code: productCode, image_url: imageUrl, user_id: userId });
+
+    if (error) {
+      console.error('Error saving product image:', error);
+      await removeImageFiles([imageUrl]);
+      throw error;
+    }
+    if (existing && existing.image_url !== imageUrl) await removeImageFiles([existing.image_url]);
   } catch (error) {
     console.error('Error saving image:', error);
     toast.error('Failed to save image');
@@ -265,285 +351,84 @@ export const getProductImage = async (productCode: string): Promise<string | und
   }
 };
 
-// Enhance products with their images
+const IMAGE_CHUNK_SIZE = 25;
+const IMAGE_REQUESTS_IN_PARALLEL = 4;
+
+// Enhance products with their images. Loaded in small parallel requests so a few large
+// inline images cannot make one huge request time out.
 const enhanceProductsWithImages = async (products: Product[]): Promise<void> => {
-  try {
-    if (products.length === 0) return;
-    
-    const { data: session } = await supabase.auth.getSession();
-    if (!session.session?.user) {
-      console.warn('No authenticated user found when enhancing products with images');
-      return;
-    }
-    
-    const userId = session.session.user.id;
-    const productCodes = products.map(p => p.product_code);
-    
+  if (products.length === 0) return;
+
+  const { data: session } = await supabase.auth.getSession();
+  if (!session.session?.user) {
+    console.warn('No authenticated user found when enhancing products with images');
+    return;
+  }
+  const userId = session.session.user.id;
+
+  const codes = [...new Set(products.map((p) => p.product_code))];
+  const chunks: string[][] = [];
+  for (let i = 0; i < codes.length; i += IMAGE_CHUNK_SIZE) chunks.push(codes.slice(i, i + IMAGE_CHUNK_SIZE));
+
+  const imageMap = new Map<string, string>();
+  const loadChunk = async (chunk: string[], attempt = 1): Promise<void> => {
     const { data, error } = await supabase
       .from('product_images')
       .select('product_code, image_url')
-      .in('product_code', productCodes)
+      .in('product_code', chunk)
       .eq('user_id', userId);
-    
     if (error) {
+      if (attempt < 3) return loadChunk(chunk, attempt + 1);
       console.error('Error fetching product images:', error);
       return;
     }
-    
-    console.log(`Retrieved ${data?.length || 0} images for ${productCodes.length} products`);
-    
-    const imageMap = new Map<string, string>();
-    data.forEach(item => {
-      imageMap.set(item.product_code, item.image_url);
-    });
-    
-    products.forEach(product => {
-      product.imageUrl = imageMap.get(product.product_code);
-    });
+    data.forEach((item) => imageMap.set(item.product_code, item.image_url));
+  };
+
+  const worker = async () => {
+    for (let chunk = chunks.shift(); chunk; chunk = chunks.shift()) await loadChunk(chunk);
+  };
+  await Promise.all(Array.from({ length: IMAGE_REQUESTS_IN_PARALLEL }, worker));
+
+  products.forEach((product) => {
+    product.imageUrl = imageMap.get(product.product_code);
+  });
+};
+
+export type ZipImages = { images: Map<string, string>; originalBytes: number; compressedBytes: number };
+
+// Read images from a ZIP (named by product code) and compress each one.
+export const processImageZip = async (file: File): Promise<ZipImages> => {
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(await file.arrayBuffer());
   } catch (error) {
-    console.error('Error enhancing products with images:', error);
+    console.error('Error processing ZIP file:', error);
+    throw new Error('Failed to process ZIP file. Make sure it contains valid images.');
   }
-};
 
-// Process Excel file - Updated to handle the specific Excel structure with L, W, H columns
-export const processExcelFile = async (file: File): Promise<Product[]> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        
-        const worksheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[worksheetName];
-        
-        const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        
-        if (rawData.length < 2) {
-          throw new Error('Excel file has insufficient data. It should have headers and at least one data row.');
-        }
-        
-        const headers = rawData[0] as string[];
-        console.log('Excel headers:', headers);
-        
-        // Find column indices based on your specific Excel structure
-        const findColumnIndex = (possibleNames: string[]): number => {
-          return headers.findIndex(header => {
-            if (!header) return false;
-            const headerStr = String(header).toLowerCase().trim();
-            return possibleNames.some(name => headerStr === name || headerStr.includes(name));
-          });
-        };
-        
-        const snoIndex = findColumnIndex(['sno', 's.no', 'serial', 'serial no', 'serial number']);
-        const codeIndex = findColumnIndex(['product_code', 'productcode', 'code', 'product code', 'item code']);
-        const photoIndex = findColumnIndex(['photo', 'image', 'picture']);
-        const descIndex = findColumnIndex(['description', 'desc', 'details', 'info']);
-        const finishIndex = findColumnIndex(['finish', 'color', 'material']);
-        const sizeIndex = findColumnIndex(['size', 'dimensions', 'dimension', 'measurements']);
-        const priceIndex = findColumnIndex(['price', 'cost', 'amount', 'value', 'price usd']);
-        const cbmIndex = findColumnIndex(['cbm', 'cubic meter', 'volume']);
-        
-        // Find the sub-header row (typically row 1) to locate L, W, H columns
-        let lengthIndex = -1;
-        let widthIndex = -1;
-        let heightIndex = -1;
-        
-        // Check if there's a second header row with L, W, H
-        if (rawData.length > 1) {
-          const subHeaders = rawData[1] as string[];
-          for (let i = 0; i < subHeaders.length; i++) {
-            const header = subHeaders[i];
-            if (!header) continue;
-            
-            const headerStr = String(header).toLowerCase().trim();
-            if (headerStr === 'l' || headerStr === 'length') {
-              lengthIndex = i;
-            } else if (headerStr === 'w' || headerStr === 'width') {
-              widthIndex = i;
-            } else if (headerStr === 'h' || headerStr === 'height') {
-              heightIndex = i;
-            }
-          }
-        }
-        
-        // If we didn't find L, W, H in the second row, look for them in the main headers
-        if (lengthIndex === -1) {
-          lengthIndex = findColumnIndex(['l', 'length']);
-        }
-        if (widthIndex === -1) {
-          widthIndex = findColumnIndex(['w', 'width', 'breadth', 'b']);
-        }
-        if (heightIndex === -1) {
-          heightIndex = findColumnIndex(['h', 'height']);
-        }
-        
-        console.log('Column indexes:', { 
-          snoIndex, 
-          codeIndex,
-          photoIndex,
-          descIndex,
-          finishIndex,
-          sizeIndex,
-          lengthIndex,
-          widthIndex,
-          heightIndex,
-          priceIndex, 
-          cbmIndex
-        });
-        
-        if (snoIndex === -1 || codeIndex === -1) {
-          throw new Error('Required columns not found. Excel file must have at least "Sno" and "product_code" columns.');
-        }
-        
-        const products: Product[] = [];
-        const startRow = (lengthIndex !== -1 && widthIndex !== -1 && heightIndex !== -1 && 
-                         (rawData[1][lengthIndex] === 'L' || rawData[1][widthIndex] === 'W' || rawData[1][heightIndex] === 'H')) ? 2 : 1;
-        
-        for (let i = startRow; i < rawData.length; i++) {
-          const row = rawData[i] as any[];
-          
-          if (!row || row.length === 0) continue;
-          
-          if (row[snoIndex] === undefined || row[codeIndex] === undefined) {
-            console.warn(`Skipping row ${i + 1} due to missing required data`);
-            continue;
-          }
-          
-          let sno = parseInt(String(row[snoIndex]));
-          if (isNaN(sno)) {
-            sno = i;
-          }
-          
-          const productCode = String(row[codeIndex] || '').trim();
-          if (!productCode) {
-            console.warn(`Skipping row ${i + 1} due to empty product code`);
-            continue;
-          }
-          
-          const product: Product = {
-            id: '',
-            sno: sno,
-            product_code: productCode,
-            price: priceIndex >= 0 ? parseFloat(String(row[priceIndex] || '0')) || 0 : 0,
-            cbm: cbmIndex >= 0 ? String(row[cbmIndex] || 'N/A') : 'N/A',
-            description: descIndex >= 0 ? String(row[descIndex] || '') : '',
-          };
-          
-          // Handle length, width, height from their specific columns
-          if (lengthIndex >= 0 && row[lengthIndex] !== undefined) {
-            product.length = String(row[lengthIndex]);
-          }
-          
-          if (widthIndex >= 0 && row[widthIndex] !== undefined) {
-            product.width = String(row[widthIndex]);
-          }
-          
-          if (heightIndex >= 0 && row[heightIndex] !== undefined) {
-            product.height = String(row[heightIndex]);
-          }
-          
-          // If size/dimensions column exists, parse it as backup for L, W, H
-          if (sizeIndex >= 0 && row[sizeIndex] && (!product.length || !product.width || !product.height)) {
-            const dimStr = String(row[sizeIndex] || '');
-            product.dimensions = dimStr;
-            
-            // Try to parse dimensions like "50 x 50 x 31"
-            const dimParts = dimStr.split(/\s*[x×]\s*/);
-            if (dimParts.length === 3) {
-              if (!product.length) product.length = dimParts[0].trim();
-              if (!product.width) product.width = dimParts[1].trim();
-              if (!product.height) product.height = dimParts[2].trim();
-            }
-          }
-          
-          // Create dimensions string from individual L, W, H if it doesn't exist
-          if (product.length && product.width && product.height && !product.dimensions) {
-            product.dimensions = `${product.length} × ${product.width} × ${product.height}`;
-          }
-          
-          products.push(withCalculatedCbm(product));
-        }
-        
-        if (products.length === 0) {
-          throw new Error('No valid products found in the Excel file.');
-        }
-        
-        products.sort((a, b) => a.sno - b.sno);
-        
-        console.log(`Successfully processed ${products.length} products`);
-        resolve(products);
-      } catch (error) {
-        console.error('Error processing Excel file:', error);
-        reject(new Error(error instanceof Error ? error.message : 'Failed to process Excel file. Please check the format.'));
-      }
-    };
-    
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'));
-    };
-    
-    reader.readAsArrayBuffer(file);
-  });
-};
+  const images = new Map<string, string>();
+  let originalBytes = 0;
+  let compressedBytes = 0;
 
-// Process zip file with images
-export const processImageZip = async (file: File): Promise<Map<string, string>> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    
-    reader.onload = async (e) => {
-      try {
-        const zip = new JSZip();
-        const result = await zip.loadAsync(e.target?.result as ArrayBuffer);
-        const imageMap = new Map<string, string>();
-        
-        const promises = Object.keys(result.files).map(async (fileName) => {
-          const zipEntry = result.files[fileName];
-          
-          if (zipEntry.dir) return;
-          
-          const fileNameWithoutPath = fileName.split('/').pop() || '';
-          const productCode = fileNameWithoutPath.split('.')[0];
-          
-          if (!productCode || !fileNameWithoutPath.match(/\.(jpe?g|png|gif|bmp|webp)$/i)) {
-            return;
-          }
-          
-          try {
-            const fileData = await zipEntry.async('blob');
-            
-            const reader = new FileReader();
-            reader.readAsDataURL(fileData);
-            
-            return new Promise((resolveFile) => {
-              reader.onload = (e) => {
-                if (e.target?.result) {
-                  imageMap.set(productCode, e.target.result.toString());
-                }
-                resolveFile(null);
-              };
-            });
-          } catch (error) {
-            console.error(`Error processing file ${fileName}:`, error);
-          }
-        });
-        
-        await Promise.all(promises);
-        resolve(imageMap);
-      } catch (error) {
-        console.error('Error processing ZIP file:', error);
-        reject(new Error('Failed to process ZIP file. Make sure it contains valid images.'));
-      }
-    };
-    
-    reader.onerror = () => {
-      reject(new Error('Failed to read ZIP file'));
-    };
-    
-    reader.readAsArrayBuffer(file);
-  });
+  for (const entry of Object.values(zip.files)) {
+    if (entry.dir) continue;
+    const fileName = entry.name.split('/').pop() || '';
+    const productCode = fileName.split('.')[0];
+    if (!productCode || fileName.startsWith('._') || !/\.(jpe?g|png|gif|bmp|webp)$/i.test(fileName)) continue;
+
+    try {
+      const blob = await entry.async('blob');
+      const dataUrl = await compressImageOrKeep(blob);
+      images.set(productCode, dataUrl);
+      originalBytes += blob.size;
+      compressedBytes += dataUrlBytes(dataUrl);
+    } catch (error) {
+      console.error(`Error processing file ${entry.name}:`, error);
+    }
+  }
+
+  return { images, originalBytes, compressedBytes };
 };
 
 // Search products
@@ -612,6 +497,11 @@ export const getProductByCode = async (productCode: string): Promise<Product | u
       price: data.price,
       cbm: data.cbm,
       description: data.description || '',
+      finish: data.finish ?? undefined,
+      packing_length: data.packing_length ?? undefined,
+      packing_width: data.packing_width ?? undefined,
+      packing_height: data.packing_height ?? undefined,
+      net_weight: data.net_weight ?? undefined,
     };
     
     const imageUrl = await getProductImage(productCode);

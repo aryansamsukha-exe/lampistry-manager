@@ -7,6 +7,7 @@ import {
   Upload, 
   QrCode, 
   BookOpen,
+  Printer,
   LogOut, 
   Menu, 
   X,
@@ -28,6 +29,7 @@ const Navbar: React.FC = () => {
     { name: "Import", icon: <Upload className="mr-2 h-4 w-4" />, path: "/import", auth: true },
     { name: "QR Codes", icon: <QrCode className="mr-2 h-4 w-4" />, path: "/qr-codes", auth: true },
     { name: "Catalog", icon: <BookOpen className="mr-2 h-4 w-4" />, path: "/catalog", auth: true },
+    { name: "Print Tags", icon: <Printer className="mr-2 h-4 w-4" />, path: "/print-tags", auth: true },
   ];
 
   const toggleMobileMenu = () => setMobileMenuOpen(!mobileMenuOpen);

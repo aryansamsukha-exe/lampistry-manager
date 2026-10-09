@@ -73,10 +73,15 @@ export type Database = {
           created_at: string
           description: string | null
           dimensions: string | null
+          finish: string | null
           height: string | null
           id: string
           import_batch_id: string | null
           length: string | null
+          net_weight: string | null
+          packing_height: string | null
+          packing_length: string | null
+          packing_width: string | null
           price: number
           product_code: string
           sno: number
@@ -88,10 +93,15 @@ export type Database = {
           created_at?: string
           description?: string | null
           dimensions?: string | null
+          finish?: string | null
           height?: string | null
           id?: string
           import_batch_id?: string | null
           length?: string | null
+          net_weight?: string | null
+          packing_height?: string | null
+          packing_length?: string | null
+          packing_width?: string | null
           price?: number
           product_code: string
           sno: number
@@ -103,10 +113,15 @@ export type Database = {
           created_at?: string
           description?: string | null
           dimensions?: string | null
+          finish?: string | null
           height?: string | null
           id?: string
           import_batch_id?: string | null
           length?: string | null
+          net_weight?: string | null
+          packing_height?: string | null
+          packing_length?: string | null
+          packing_width?: string | null
           price?: number
           product_code?: string
           sno?: number

@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Supplier offersheets (contain prices; never deploy)
+offersheets/

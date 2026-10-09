@@ -29,13 +29,23 @@ export const calculateCbm = (product: Pick<Product, "length" | "width" | "height
   return (length * width * height) / 1_000_000;
 };
 
-export const formatCbm = (product: Pick<Product, "length" | "width" | "height" | "cbm">): string => {
-  const calculated = calculateCbm(product);
+type CbmSource = Pick<
+  Product,
+  "length" | "width" | "height" | "packing_length" | "packing_width" | "packing_height"
+>;
+
+/** Shipping volume: packing size when the product has one, otherwise the item size. */
+const shippingCbm = (product: CbmSource): number | null =>
+  calculateCbm({ length: product.packing_length, width: product.packing_width, height: product.packing_height }) ??
+  calculateCbm(product);
+
+export const formatCbm = (product: CbmSource & Pick<Product, "cbm">): string => {
+  const calculated = shippingCbm(product);
   if (calculated !== null) return calculated.toFixed(4);
   return product.cbm && product.cbm !== "N/A" ? product.cbm : "—";
 };
 
 export const withCalculatedCbm = (product: Product): Product => {
-  const calculated = calculateCbm(product);
+  const calculated = shippingCbm(product);
   return calculated === null ? product : { ...product, cbm: calculated.toFixed(4) };
 };

@@ -2,13 +2,16 @@
 import React, { useState } from "react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { QrCode, Download, ImageIcon, Info, Upload, Trash2 } from "lucide-react";
+import { QrCode, Download, ImageIcon, Info, Upload, Trash2, Pencil, Save, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import FileUploader from "@/components/FileUploader";
-import { saveProductImage, deleteProduct } from "@/services/productService";
-import { toast } from "sonner";
+import ImageCropper from "@/components/ImageCropper";
+import { saveProductImage, deleteProduct, updateProduct, type ProductEdits } from "@/services/productService";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 export type Product = {
@@ -22,6 +25,11 @@ export type Product = {
   price: number;
   cbm: string;
   description: string;
+  finish?: string;
+  packing_length?: string;
+  packing_width?: string;
+  packing_height?: string;
+  net_weight?: string;
   imageUrl?: string;
   import_batch_id?: string | null;
   created_at?: string;
@@ -32,47 +40,79 @@ interface ProductCardProps {
   onDownloadQR: (product: Product) => void;
   onImageUpdate?: () => void; // Callback to refresh product list after image update
   onProductDelete?: () => void; // Callback to refresh product list after deletion
+  onProductUpdate?: (product: Product) => void;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImageUpdate, onProductDelete }) => {
+type EditForm = Record<keyof ProductEdits, string>;
+
+const toEditForm = (product: Product): EditForm => ({
+  description: product.description ?? "",
+  price: String(product.price ?? 0),
+  length: product.length ?? "",
+  width: product.width ?? "",
+  height: product.height ?? "",
+  finish: product.finish ?? "",
+  packing_length: product.packing_length ?? "",
+  packing_width: product.packing_width ?? "",
+  packing_height: product.packing_height ?? "",
+  net_weight: product.net_weight ?? "",
+});
+
+const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImageUpdate, onProductDelete, onProductUpdate }) => {
   const [showDetails, setShowDetails] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [form, setForm] = useState<EditForm>(() => toEditForm(product));
+
+  const startEditing = () => {
+    setForm(toEditForm(product));
+    setIsEditing(true);
+  };
+
+  const setField = (key: keyof EditForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm((current) => ({ ...current, [key]: e.target.value }));
+
+  const handleSave = async () => {
+    const price = form.price.trim() === "" ? 0 : Number(form.price);
+    if (!Number.isFinite(price) || price < 0) {
+      toast.error("Please enter a valid price");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const updated = await updateProduct(product, { ...form, price });
+      toast.success(`${product.product_code} updated`);
+      setIsEditing(false);
+      onProductUpdate?.(updated);
+    } catch {
+      toast.error("Failed to update product");
+    } finally {
+      setIsSaving(false);
+    }
+  };
   const [showImageUpload, setShowImageUpload] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [fileToCrop, setFileToCrop] = useState<File | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   
   const productImage = product.imageUrl || "/placeholder.svg";
   
-  const handleImageUpload = async (file: File) => {
+  const closeImageUpload = (open: boolean) => {
+    setShowImageUpload(open);
+    if (!open) setFileToCrop(null);
+  };
+
+  const handleImageSave = async (imageDataUrl: string) => {
     setIsUploading(true);
     try {
-      const reader = new FileReader();
-      
-      reader.onload = async (e) => {
-        if (e.target?.result) {
-          try {
-            const imageDataUrl = e.target.result.toString();
-            await saveProductImage(product.product_code, imageDataUrl);
-            toast.success("Image uploaded successfully");
-            setShowImageUpload(false);
-            if (onImageUpdate) {
-              onImageUpdate();
-            }
-          } catch (error) {
-            console.error("Failed to save image:", error);
-            toast.error("Failed to save image");
-          }
-        }
-      };
-      
-      reader.onerror = () => {
-        toast.error("Failed to read image file");
-      };
-      
-      reader.readAsDataURL(file);
+      await saveProductImage(product.product_code, imageDataUrl);
+      toast.success("Image uploaded successfully");
+      closeImageUpload(false);
+      onImageUpdate?.();
     } catch (error) {
-      console.error("Image upload error:", error);
-      toast.error("Image upload failed");
+      console.error("Failed to save image:", error);
+      toast.error("Failed to save image");
     } finally {
       setIsUploading(false);
     }
@@ -120,11 +160,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
       <Card className="overflow-hidden transition-all hover:shadow-md">
         <CardHeader className="p-0 relative">
           <div className="image-container w-full">
-            <AspectRatio ratio={4/3} className="bg-secondary">
+            <AspectRatio ratio={4/3} className={product.imageUrl ? "bg-white" : "bg-secondary"}>
               <img
                 src={productImage}
                 alt={product.product_code}
-                className="object-cover w-full h-full"
+                loading="lazy"
+                decoding="async"
+                className={product.imageUrl ? "object-contain w-full h-full" : "object-cover w-full h-full"}
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = "/placeholder.svg";
                 }}
@@ -174,26 +216,32 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
         </CardFooter>
       </Card>
 
-      <Dialog open={showDetails} onOpenChange={setShowDetails}>
-        <DialogContent className="sm:max-w-[500px]">
+      <Dialog
+        open={showDetails}
+        onOpenChange={(open) => {
+          setShowDetails(open);
+          if (!open) setIsEditing(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl">Product Details</DialogTitle>
+            <DialogTitle className="text-xl">{isEditing ? `Edit ${product.product_code}` : "Product Details"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="mx-auto w-full max-w-[200px]">
+            <div className="mx-auto w-full max-w-[320px]">
               {product.imageUrl ? (
-                <AspectRatio ratio={1/1} className="bg-secondary rounded-md overflow-hidden">
+                <AspectRatio ratio={4/3} className="bg-white border rounded-md overflow-hidden">
                   <img
                     src={product.imageUrl}
                     alt={product.product_code}
-                    className="object-cover w-full h-full"
+                    className="object-contain w-full h-full"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = "/placeholder.svg";
                     }}
                   />
                 </AspectRatio>
               ) : (
-                <div className="flex items-center justify-center bg-secondary rounded-md h-[200px]">
+                <div className="flex items-center justify-center bg-secondary rounded-md aspect-[4/3]">
                   <ImageIcon className="h-12 w-12 text-muted-foreground" />
                 </div>
               )}
@@ -201,6 +249,51 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
             
             <Separator />
             
+            {isEditing ? (
+              <div className="grid gap-3 text-sm">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Product Code</Label>
+                    <Input value={product.product_code} disabled />
+                  </div>
+                  <div>
+                    <Label htmlFor={`price-${product.id}`} className="text-xs">Price (USD)</Label>
+                    <Input id={`price-${product.id}`} type="number" min="0" step="0.01" value={form.price} onChange={setField("price")} />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Item Size (L × W × H)</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input placeholder="L" value={form.length} onChange={setField("length")} />
+                    <Input placeholder="W" value={form.width} onChange={setField("width")} />
+                    <Input placeholder="H" value={form.height} onChange={setField("height")} />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Packing Size (L × W × H)</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input placeholder="L" value={form.packing_length} onChange={setField("packing_length")} />
+                    <Input placeholder="W" value={form.packing_width} onChange={setField("packing_width")} />
+                    <Input placeholder="H" value={form.packing_height} onChange={setField("packing_height")} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor={`finish-${product.id}`} className="text-xs">Finish</Label>
+                    <Input id={`finish-${product.id}`} value={form.finish} onChange={setField("finish")} />
+                  </div>
+                  <div>
+                    <Label htmlFor={`weight-${product.id}`} className="text-xs">Net Weight</Label>
+                    <Input id={`weight-${product.id}`} value={form.net_weight} onChange={setField("net_weight")} />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor={`desc-${product.id}`} className="text-xs">Description</Label>
+                  <Textarea id={`desc-${product.id}`} rows={3} value={form.description} onChange={setField("description")} />
+                </div>
+                <p className="text-xs text-muted-foreground">CBM is recalculated from the packing size (or item size if there is no packing size).</p>
+              </div>
+            ) : (
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="font-medium">Product Code:</div>
               <div>{product.product_code}</div>
@@ -238,6 +331,27 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
                 </>
               )}
               
+              {product.packing_length && product.packing_width && product.packing_height && (
+                <>
+                  <div className="font-medium">Packing Size:</div>
+                  <div>{`${product.packing_length} × ${product.packing_width} × ${product.packing_height}`}</div>
+                </>
+              )}
+
+              {product.finish && (
+                <>
+                  <div className="font-medium">Finish:</div>
+                  <div>{product.finish}</div>
+                </>
+              )}
+
+              {product.net_weight && (
+                <>
+                  <div className="font-medium">Net Weight:</div>
+                  <div>{product.net_weight}</div>
+                </>
+              )}
+
               <div className="font-medium">Price:</div>
               <div>${product.price.toFixed(2)}</div>
               
@@ -247,10 +361,23 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
               <div className="font-medium col-span-2">Description:</div>
               <div className="col-span-2">{product.description || "No description available."}</div>
             </div>
+            )}
             
             <Separator />
             
-            <div className="flex justify-between">
+            {isEditing ? (
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsEditing(false)} disabled={isSaving} className="gap-2">
+                <X className="h-4 w-4" />
+                Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+                <Save className="h-4 w-4" />
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+            ) : (
+            <div className="flex flex-wrap justify-between gap-2">
               <Button
                 variant="outline"
                 onClick={() => onDownloadQR(product)}
@@ -258,6 +385,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
               >
                 <Download className="h-4 w-4" />
                 Download QR Code
+              </Button>
+
+              <Button variant="outline" onClick={startEditing} className="flex items-center justify-center gap-2">
+                <Pencil className="h-4 w-4" />
+                Edit
               </Button>
               
               <Button
@@ -269,23 +401,33 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
                 Delete Product
               </Button>
             </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showImageUpload} onOpenChange={setShowImageUpload}>
-        <DialogContent className="sm:max-w-[400px]">
+      <Dialog open={showImageUpload} onOpenChange={closeImageUpload}>
+        <DialogContent className={fileToCrop ? "sm:max-w-[760px] max-h-[95vh] overflow-y-auto" : "sm:max-w-[400px]"}>
           <DialogHeader>
-            <DialogTitle>Upload Product Image</DialogTitle>
+            <DialogTitle>{fileToCrop ? `Crop image for ${product.product_code}` : "Upload Product Image"}</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <FileUploader
-              onFileSelect={handleImageUpload}
-              accept="image/*"
-              label={`Upload image for ${product.product_code}`}
-              maxSize={5} // 5MB max
-              isLoading={isUploading}
-            />
+            {fileToCrop ? (
+              <ImageCropper
+                file={fileToCrop}
+                isSaving={isUploading}
+                onCancel={() => setFileToCrop(null)}
+                onSave={handleImageSave}
+              />
+            ) : (
+              <FileUploader
+                onFileSelect={setFileToCrop}
+                accept="image/*"
+                label={`Upload image for ${product.product_code}`}
+                maxSize={Infinity}
+                isLoading={isUploading}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>

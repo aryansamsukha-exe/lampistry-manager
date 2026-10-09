@@ -72,12 +72,12 @@ const SelectionCard: React.FC<{
     </div>
 
     {/* image */}
-    <div className="aspect-[4/3] bg-stone-50 overflow-hidden">
+    <div className={`aspect-[4/3] overflow-hidden ${product.imageUrl ? "bg-white" : "bg-stone-50"}`}>
       {product.imageUrl ? (
         <img
           src={product.imageUrl}
           alt={product.product_code}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
         />
       ) : (
         <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-stone-300">
@@ -118,14 +118,14 @@ const CatalogProductCard: React.FC<{
     <div className={`catalog-product-card bg-white border border-stone-200 rounded-lg overflow-hidden
       ${isLarge ? "flex gap-0 h-full" : "flex flex-col"}`}
     >
-      <div className={`bg-stone-50 overflow-hidden flex-shrink-0
+      <div className={`overflow-hidden flex-shrink-0 ${product.imageUrl ? "bg-white" : "bg-stone-50"}
         ${isLarge ? "w-1/2 aspect-auto min-h-[400px]" : isMedium ? "aspect-[4/3]" : "aspect-[3/2]"}`}
       >
         {product.imageUrl ? (
           <img
             src={product.imageUrl}
             alt={product.product_code}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-stone-300 flex-col gap-2">
@@ -180,7 +180,7 @@ const QRCard: React.FC<{
   <div className="qr-card bg-white border border-stone-200 rounded-xl flex flex-col items-center p-6 text-center gap-3 break-inside-avoid">
     <div className="text-xs font-semibold uppercase tracking-widest text-stone-400">ProductMaster</div>
     {options.showImage && product.imageUrl && (
-      <img src={product.imageUrl} alt={product.product_code} className="w-24 h-24 object-cover rounded-lg" />
+      <img src={product.imageUrl} alt={product.product_code} className="w-24 h-24 object-contain bg-white rounded-lg" />
     )}
     {options.showQR && (
       <div className="p-3 bg-white rounded-lg border border-stone-100 shadow-sm">

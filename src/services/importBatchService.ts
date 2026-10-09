@@ -23,7 +23,20 @@ export const getImportBatches = async (): Promise<ImportBatch[]> => {
   return (data || []) as ImportBatch[];
 };
 
-export const updateImportBatchCount = async (id: string, productCount: number) => {
-  const { error } = await db.from("product_import_batches").update({ product_count: productCount }).eq("id", id);
+const BATCH_FILTER_KEY = "products.batchFilter";
+
+export const getSavedBatchFilter = () => localStorage.getItem(BATCH_FILTER_KEY) ?? "all";
+
+export const saveBatchFilter = (value: string) => localStorage.setItem(BATCH_FILTER_KEY, value);
+
+/** Stores the number of products currently in the batch and returns it. */
+export const refreshImportBatchCount = async (id: string): Promise<number> => {
+  const { count, error: countError } = await db
+    .from("products")
+    .select("id", { count: "exact", head: true })
+    .eq("import_batch_id", id);
+  if (countError) throw countError;
+  const { error } = await db.from("product_import_batches").update({ product_count: count ?? 0 }).eq("id", id);
   if (error) throw error;
+  return count ?? 0;
 };

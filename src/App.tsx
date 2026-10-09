@@ -15,6 +15,7 @@ import ScanQRCode from "./pages/ScanQRCode";
 import NotFound from "./pages/NotFound";
 import PublicProductDetails from "./pages/PublicProductDetails";
 import Catalog from "./pages/Catalog";
+import PrintTags from "./pages/PrintTags";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +79,11 @@ const AppRoutes = () => (
     <Route path="/catalog" element={
       <SecureRoute>
         <Catalog />
+      </SecureRoute>
+    } />
+    <Route path="/print-tags" element={
+      <SecureRoute>
+        <PrintTags />
       </SecureRoute>
     } />
     

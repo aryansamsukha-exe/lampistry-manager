@@ -123,12 +123,12 @@ ON CONFLICT (key) DO NOTHING;
 CREATE TABLE IF NOT EXISTS public.buyer_leads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  full_name TEXT NOT NULL CHECK (char_length(full_name) BETWEEN 2 AND 120),
+  full_name TEXT CHECK (full_name IS NULL OR char_length(full_name) BETWEEN 2 AND 120),
   company_name TEXT CHECK (company_name IS NULL OR char_length(company_name) <= 160),
   email TEXT CHECK (email IS NULL OR char_length(email) <= 254),
-  phone TEXT NOT NULL CHECK (char_length(phone) <= 32),
+  phone TEXT CHECK (phone IS NULL OR char_length(phone) <= 32),
   whatsapp TEXT CHECK (whatsapp IS NULL OR char_length(whatsapp) <= 32),
-  buyer_type TEXT NOT NULL CHECK (buyer_type IN (
+  buyer_type TEXT CHECK (buyer_type IN (
     'retailer', 'wholesaler', 'distributor', 'interior_designer', 'architect',
     'hospitality', 'importer', 'project_buyer', 'other'
   )),
@@ -142,13 +142,30 @@ CREATE TABLE IF NOT EXISTS public.buyer_leads (
   source TEXT NOT NULL CHECK (source IN ('shortlist', 'manual', 'exhibition_qr')),
   exhibition_id UUID REFERENCES public.exhibitions(id) ON DELETE SET NULL,
   assigned_to UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  phone_normalized TEXT NOT NULL,
+  phone_normalized TEXT,
   email_normalized TEXT,
   merged_into UUID REFERENCES public.buyer_leads(id) ON DELETE SET NULL,
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- A lead needs a name or a company, and a phone/WhatsApp number or an email.
+-- (ALTERs keep re-runs of this script in step with the definition above.)
+ALTER TABLE public.buyer_leads ALTER COLUMN buyer_type DROP NOT NULL;
+ALTER TABLE public.buyer_leads ALTER COLUMN full_name DROP NOT NULL;
+ALTER TABLE public.buyer_leads ALTER COLUMN phone DROP NOT NULL;
+ALTER TABLE public.buyer_leads ALTER COLUMN phone_normalized DROP NOT NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'buyer_leads_identity_chk') THEN
+    ALTER TABLE public.buyer_leads ADD CONSTRAINT buyer_leads_identity_chk
+      CHECK (full_name IS NOT NULL OR company_name IS NOT NULL);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'buyer_leads_contact_chk') THEN
+    ALTER TABLE public.buyer_leads ADD CONSTRAINT buyer_leads_contact_chk
+      CHECK (phone_normalized IS NOT NULL OR email_normalized IS NOT NULL);
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS buyer_leads_owner_created_idx ON public.buyer_leads(owner_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS buyer_leads_phone_idx ON public.buyer_leads(owner_id, phone_normalized);
 CREATE INDEX IF NOT EXISTS buyer_leads_email_idx ON public.buyer_leads(owner_id, email_normalized);
@@ -206,6 +223,29 @@ CREATE TABLE IF NOT EXISTS public.enquiry_items (
 CREATE INDEX IF NOT EXISTS enquiry_items_enquiry_idx ON public.enquiry_items(enquiry_id, sort_order);
 CREATE INDEX IF NOT EXISTS enquiry_items_product_idx ON public.enquiry_items(product_id);
 
+-- ── saved buyer shortlists ────────────────────────────────────────────────────
+-- Created when a buyer leaves their name + phone before sending a quotation request.
+-- The buyer holds a random token (only its hash is stored) to sync and reopen the list.
+
+CREATE TABLE IF NOT EXISTS public.buyer_shortlists (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  lead_id UUID NOT NULL REFERENCES public.buyer_leads(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  exhibition_id UUID REFERENCES public.exhibitions(id) ON DELETE SET NULL,
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  item_count INTEGER NOT NULL DEFAULT 0,
+  submitted_enquiry_id UUID REFERENCES public.enquiries(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS buyer_shortlists_owner_updated_idx ON public.buyer_shortlists(owner_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS buyer_shortlists_lead_idx ON public.buyer_shortlists(lead_id);
+
+DROP TRIGGER IF EXISTS buyer_shortlists_updated_at ON public.buyer_shortlists;
+CREATE TRIGGER buyer_shortlists_updated_at BEFORE UPDATE ON public.buyer_shortlists
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- ── product analytics ─────────────────────────────────────────────────────────
 -- No personal data: session_id is a random ID generated in the visitor's browser.
 
@@ -260,6 +300,21 @@ BEGIN
   RETURN v_hits > p_limit;
 END $$;
 
+-- Returns the first invalid contact field, or NULL. A buyer must give a name or a company,
+-- and a phone/WhatsApp number or an email. Mirrors contactErrors() in src/lib/enquiryValidation.ts.
+CREATE OR REPLACE FUNCTION public._contact_error(p_name TEXT, p_company TEXT, p_phone TEXT, p_email TEXT) RETURNS TEXT
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE
+    WHEN p_name IS NOT NULL AND char_length(p_name) NOT BETWEEN 2 AND 120 THEN 'full_name'
+    WHEN p_company IS NOT NULL AND char_length(p_company) > 160 THEN 'company_name'
+    WHEN p_name IS NULL AND p_company IS NULL THEN 'full_name'
+    WHEN p_phone IS NOT NULL AND (char_length(p_phone) > 32
+      OR char_length(regexp_replace(p_phone, '[^0-9]', '', 'g')) NOT BETWEEN 7 AND 15) THEN 'phone'
+    WHEN p_email IS NOT NULL AND (char_length(p_email) > 254 OR p_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$') THEN 'email'
+    WHEN p_phone IS NULL AND p_email IS NULL THEN 'phone'
+  END;
+$$;
+
 -- An explicit tracking code wins; otherwise the exhibition that is live today (India time).
 CREATE OR REPLACE FUNCTION public._resolve_exhibition(p_owner UUID, p_tracking_code TEXT) RETURNS UUID
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
@@ -286,10 +341,16 @@ ALTER TABLE public.enquiries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.enquiry_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.product_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.public_rate_limits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.buyer_shortlists ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON public.team_members, public.exhibitions, public.exhibition_members, public.enquiry_statuses,
-  public.buyer_leads, public.enquiries, public.enquiry_items, public.product_events, public.public_rate_limits
+  public.buyer_leads, public.enquiries, public.enquiry_items, public.product_events, public.public_rate_limits,
+  public.buyer_shortlists
   FROM anon;
+
+DROP POLICY IF EXISTS "Staff manage buyer shortlists" ON public.buyer_shortlists;
+CREATE POLICY "Staff manage buyer shortlists" ON public.buyer_shortlists
+  FOR ALL TO authenticated USING (public.is_staff_of(owner_id)) WITH CHECK (public.is_staff_of(owner_id));
 
 DROP POLICY IF EXISTS "Staff read exhibitions" ON public.exhibitions;
 CREATE POLICY "Staff read exhibitions" ON public.exhibitions
@@ -453,6 +514,7 @@ DECLARE
   v_notes TEXT := nullif(btrim(p_payload ->> 'notes'), '');
   v_categories TEXT[];
   v_phone_norm TEXT;
+  v_field TEXT;
   v_product_ids UUID[];
   v_missing UUID[];
   v_owner UUID;
@@ -482,17 +544,12 @@ BEGIN
   END IF;
 
   -- Lead validation (mirrors validateEnquiryForm in src/lib/enquiryValidation.ts).
-  v_phone_norm := regexp_replace(coalesce(v_phone, ''), '[^0-9]', '', 'g');
-  IF v_name IS NULL OR char_length(v_name) NOT BETWEEN 2 AND 120 THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'validation', 'field', 'full_name');
-  ELSIF v_company IS NULL OR char_length(v_company) > 160 THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'validation', 'field', 'company_name');
-  ELSIF char_length(v_phone_norm) NOT BETWEEN 7 AND 15 OR char_length(v_phone) > 32 THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'validation', 'field', 'phone');
+  v_phone_norm := nullif(regexp_replace(coalesce(v_phone, ''), '[^0-9]', '', 'g'), '');
+  v_field := public._contact_error(v_name, v_company, v_phone, v_email);
+  IF v_field IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'validation', 'field', v_field);
   ELSIF v_whatsapp IS NOT NULL AND (char_length(regexp_replace(v_whatsapp, '[^0-9]', '', 'g')) NOT BETWEEN 7 AND 15 OR char_length(v_whatsapp) > 32) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'validation', 'field', 'whatsapp');
-  ELSIF v_email IS NOT NULL AND (char_length(v_email) > 254 OR v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$') THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'validation', 'field', 'email');
   ELSIF v_buyer_type IS NULL OR v_buyer_type NOT IN (
     'retailer', 'wholesaler', 'distributor', 'interior_designer', 'architect',
     'hospitality', 'importer', 'project_buyer', 'other'
@@ -573,6 +630,10 @@ BEGIN
     ) RETURNING id INTO v_lead_id;
   ELSE
     UPDATE public.buyer_leads l SET
+      full_name = coalesce(l.full_name, v_name),
+      phone = coalesce(l.phone, v_phone),
+      phone_normalized = coalesce(l.phone_normalized, v_phone_norm),
+      buyer_type = coalesce(l.buyer_type, v_buyer_type),
       company_name = coalesce(l.company_name, v_company),
       email = coalesce(l.email, v_email),
       email_normalized = coalesce(l.email_normalized, v_email),
@@ -612,7 +673,160 @@ BEGIN
   JOIN public.products p ON p.id = (i.value ->> 'product_id')::uuid
   ORDER BY i.ordinality;
 
+  IF coalesce(p_payload ->> 'shortlist_token', '') ~ '^[0-9a-f]{64}$' THEN
+    UPDATE public.buyer_shortlists s
+    SET submitted_enquiry_id = v_enquiry_id
+    WHERE s.token_hash = md5(p_payload ->> 'shortlist_token') AND s.owner_id = v_owner;
+  END IF;
+
   RETURN jsonb_build_object('ok', true, 'reference', v_reference);
+END $$;
+
+-- ── saved shortlists (public, token based) ────────────────────────────────────
+
+-- Keeps only well-formed items for existing products of the given owner, in the buyer's order.
+CREATE OR REPLACE FUNCTION public._clean_shortlist_items(p_items JSONB, p_owner UUID) RETURNS JSONB
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT coalesce(jsonb_agg(jsonb_build_object(
+    'product_id', p.id,
+    'quantity', CASE WHEN i.value ->> 'quantity' ~ '^[0-9]{1,6}$'
+                     THEN least(greatest((i.value ->> 'quantity')::integer, 1), 100000) ELSE 1 END,
+    'finish', left(coalesce(i.value ->> 'finish', ''), 300),
+    'customization', left(coalesce(i.value ->> 'customization', ''), 1000),
+    'notes', left(coalesce(i.value ->> 'notes', ''), 1000)
+  ) ORDER BY i.ordinality), '[]'::jsonb)
+  FROM (
+    SELECT value, ordinality FROM jsonb_array_elements(
+      CASE WHEN jsonb_typeof(p_items) = 'array' THEN p_items ELSE '[]'::jsonb END
+    ) WITH ORDINALITY
+    LIMIT 100
+  ) i
+  JOIN public.products p
+    ON p.id = CASE WHEN i.value ->> 'product_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                   THEN (i.value ->> 'product_id')::uuid END
+   AND p.user_id = p_owner;
+$$;
+
+-- Quick "save my shortlist": name or company + phone or email. Creates (or reuses) the lead
+-- and returns a private token.
+CREATE OR REPLACE FUNCTION public.save_buyer_shortlist(p_payload JSONB) RETURNS JSONB
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_session TEXT := p_payload ->> 'session_id';
+  v_name TEXT := nullif(btrim(p_payload ->> 'full_name'), '');
+  v_company TEXT := nullif(btrim(p_payload ->> 'company_name'), '');
+  v_phone TEXT := nullif(btrim(p_payload ->> 'phone'), '');
+  v_email TEXT := nullif(lower(btrim(p_payload ->> 'email')), '');
+  v_phone_norm TEXT := nullif(regexp_replace(coalesce(p_payload ->> 'phone', ''), '[^0-9]', '', 'g'), '');
+  v_field TEXT;
+  v_consent BOOLEAN := coalesce(p_payload ->> 'consent_to_contact', '') = 'true';
+  v_first_id TEXT := p_payload -> 'items' -> 0 ->> 'product_id';
+  v_owner UUID;
+  v_items JSONB;
+  v_exhibition UUID;
+  v_lead_id UUID;
+  v_token TEXT := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+BEGIN
+  IF v_session IS NULL OR v_session !~ '^[0-9a-f-]{36}$' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'invalid_request');
+  END IF;
+  IF public._hit_rate_limit('save:s:' || v_session, 5, interval '1 hour')
+     OR public._hit_rate_limit('save:ip:' || public._request_ip_hash(), 30, interval '1 hour') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'rate_limited');
+  END IF;
+
+  v_field := public._contact_error(v_name, v_company, v_phone, v_email);
+  IF v_field IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'validation', 'field', v_field);
+  END IF;
+
+  IF v_first_id IS NULL OR v_first_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'validation', 'field', 'items');
+  END IF;
+  SELECT p.user_id INTO v_owner FROM public.products p WHERE p.id = v_first_id::uuid;
+  IF v_owner IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'validation', 'field', 'items');
+  END IF;
+
+  v_items := public._clean_shortlist_items(p_payload -> 'items', v_owner);
+  v_exhibition := public._resolve_exhibition(v_owner, p_payload ->> 'tracking_code');
+
+  SELECT l.id INTO v_lead_id FROM public.buyer_leads l
+  WHERE l.owner_id = v_owner AND l.merged_into IS NULL
+    AND (l.phone_normalized = v_phone_norm OR l.email_normalized = v_email)
+  ORDER BY l.created_at
+  LIMIT 1;
+
+  IF v_lead_id IS NULL THEN
+    INSERT INTO public.buyer_leads (
+      owner_id, full_name, company_name, phone, email, consent_to_contact, consent_at, source, exhibition_id,
+      phone_normalized, email_normalized
+    ) VALUES (
+      v_owner, v_name, v_company, v_phone, v_email, v_consent, CASE WHEN v_consent THEN now() END, 'shortlist',
+      v_exhibition, v_phone_norm, v_email
+    ) RETURNING id INTO v_lead_id;
+  ELSE
+    UPDATE public.buyer_leads l SET
+      full_name = coalesce(l.full_name, v_name),
+      company_name = coalesce(l.company_name, v_company),
+      phone = coalesce(l.phone, v_phone),
+      phone_normalized = coalesce(l.phone_normalized, v_phone_norm),
+      email = coalesce(l.email, v_email),
+      email_normalized = coalesce(l.email_normalized, v_email),
+      consent_to_contact = l.consent_to_contact OR v_consent,
+      consent_at = CASE WHEN v_consent AND NOT l.consent_to_contact THEN now() ELSE l.consent_at END
+    WHERE l.id = v_lead_id;
+  END IF;
+
+  INSERT INTO public.buyer_shortlists (owner_id, lead_id, token_hash, exhibition_id, items, item_count)
+  VALUES (v_owner, v_lead_id, md5(v_token), v_exhibition, v_items, jsonb_array_length(v_items));
+
+  RETURN jsonb_build_object('ok', true, 'token', v_token);
+END $$;
+
+-- Replaces the saved items of a shortlist (called whenever the buyer changes it).
+CREATE OR REPLACE FUNCTION public.sync_buyer_shortlist(p_token TEXT, p_items JSONB) RETURNS JSONB
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_id UUID;
+  v_owner UUID;
+  v_items JSONB;
+BEGIN
+  IF coalesce(p_token, '') !~ '^[0-9a-f]{64}$' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'not_found');
+  END IF;
+  SELECT s.id, s.owner_id INTO v_id, v_owner FROM public.buyer_shortlists s WHERE s.token_hash = md5(p_token);
+  IF v_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'not_found');
+  END IF;
+  IF public._hit_rate_limit('sync:' || v_id::text, 600, interval '1 hour') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'rate_limited');
+  END IF;
+
+  v_items := public._clean_shortlist_items(p_items, v_owner);
+  UPDATE public.buyer_shortlists SET items = v_items, item_count = jsonb_array_length(v_items) WHERE id = v_id;
+  RETURN jsonb_build_object('ok', true);
+END $$;
+
+-- Lets the buyer reopen their list on another browser. Returns only their items and first name.
+CREATE OR REPLACE FUNCTION public.get_buyer_shortlist(p_token TEXT) RETURNS JSONB
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_result JSONB;
+BEGIN
+  IF coalesce(p_token, '') !~ '^[0-9a-f]{64}$' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'not_found');
+  END IF;
+  SELECT jsonb_build_object(
+    'ok', true,
+    'first_name', coalesce(split_part(l.full_name, ' ', 1), l.company_name),
+    'items', s.items,
+    'submitted', s.submitted_enquiry_id IS NOT NULL
+  ) INTO v_result
+  FROM public.buyer_shortlists s
+  JOIN public.buyer_leads l ON l.id = s.lead_id
+  WHERE s.token_hash = md5(p_token);
+  RETURN coalesce(v_result, jsonb_build_object('ok', false, 'error', 'not_found'));
 END $$;
 
 -- ── function permissions ──────────────────────────────────────────────────────
@@ -621,6 +835,8 @@ REVOKE ALL ON FUNCTION public._request_ip_hash() FROM PUBLIC, anon, authenticate
 REVOKE ALL ON FUNCTION public._hit_rate_limit(TEXT, INTEGER, INTERVAL) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public._resolve_exhibition(UUID, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.set_updated_at() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public._clean_shortlist_items(JSONB, UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public._contact_error(TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.is_staff_of(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_admin_of(UUID) TO authenticated;
@@ -629,3 +845,6 @@ GRANT EXECUTE ON FUNCTION public.get_public_product(UUID) TO anon, authenticated
 GRANT EXECUTE ON FUNCTION public.get_public_product_by_code(TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.track_product_event(UUID, TEXT, TEXT, TEXT, TEXT, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.submit_shortlist_enquiry(JSONB) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.save_buyer_shortlist(JSONB) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_buyer_shortlist(TEXT, JSONB) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_buyer_shortlist(TEXT) TO anon, authenticated;

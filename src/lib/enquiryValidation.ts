@@ -53,18 +53,30 @@ const isPhone = (value: string) => {
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+export type ContactFields = Pick<EnquiryForm, "full_name" | "company_name" | "phone" | "email">;
+
+/** A buyer needs a name or a company, and a phone/WhatsApp number or an email. Mirrors _contact_error() in SQL. */
+export const contactErrors = (contact: ContactFields): EnquiryFormErrors => {
+  const errors: EnquiryFormErrors = {};
+  const name = contact.full_name.trim();
+  const company = contact.company_name.trim();
+  const phone = contact.phone.trim();
+  const email = contact.email.trim();
+
+  if (name && (name.length < 2 || name.length > 120)) errors.full_name = "Please enter your full name.";
+  if (company.length > 160) errors.company_name = "Company name is too long.";
+  if (!name && !company) errors.full_name = "Please enter your name or your company name.";
+  if (phone && !isPhone(phone)) errors.phone = "Please enter a valid number with country code.";
+  if (email && (email.length > 254 || !EMAIL_PATTERN.test(email))) errors.email = "Please enter a valid email address.";
+  if (!phone && !email) errors.phone = "Please enter a WhatsApp/phone number or an email.";
+  return errors;
+};
+
 // Mirrors the checks in submit_shortlist_enquiry (supabase/exhibition-phase2.sql).
 export const validateEnquiryForm = (form: EnquiryForm): EnquiryFormErrors => {
-  const errors: EnquiryFormErrors = {};
-  const name = form.full_name.trim();
-  const email = form.email.trim();
+  const errors = contactErrors(form);
 
-  if (name.length < 2 || name.length > 120) errors.full_name = "Please enter your full name.";
-  if (!form.company_name.trim()) errors.company_name = "Please enter your company name.";
-  else if (form.company_name.trim().length > 160) errors.company_name = "Company name is too long.";
-  if (!isPhone(form.phone)) errors.phone = "Please enter a valid phone number with country code.";
   if (form.whatsapp.trim() && !isPhone(form.whatsapp)) errors.whatsapp = "Please enter a valid WhatsApp number.";
-  if (email && (email.length > 254 || !EMAIL_PATTERN.test(email))) errors.email = "Please enter a valid email address.";
   if (!form.buyer_type) errors.buyer_type = "Please choose what best describes your business.";
   if (!form.city.trim()) errors.city = "Please enter your city.";
   if (!form.country.trim()) errors.country = "Please enter your country.";

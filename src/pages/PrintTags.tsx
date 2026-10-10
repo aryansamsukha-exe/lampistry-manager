@@ -13,7 +13,7 @@ import { getImportBatches, getSavedBatchFilter, type ImportBatch } from "@/servi
 import { generateQRCode } from "@/services/qrService";
 import { BRAND_NAME } from "@/lib/productDisplay";
 
-const TAGS_PER_SHEET = 8; // 2 × 4 tags of 99 × 70 mm on A4
+const TAGS_PER_SHEET = 16; // 4 × 4 tags of 48 × 70 mm on A4
 const NO_BATCH = "no-batch";
 const ALL = "all";
 
@@ -33,16 +33,15 @@ const Tag: React.FC<{ product: Product; qr?: string }> = ({ product, qr }) => {
     <div className="tag">
       <div className="tag-header">
         <img className="tag-logo" src={brandLogo} alt={BRAND_NAME} />
-        <span className="tag-code">{product.product_code}</span>
       </div>
-      {product.description && <p className="tag-description">{product.description}</p>}
       <div className="tag-body">
         <div className="tag-qr">
           {qr ? <img src={qr} alt={`QR ${product.product_code}`} /> : <Loader className="h-5 w-5 animate-spin text-stone-300" />}
-          <span>Scan for photos</span>
+          <span className="tag-code">{product.product_code}</span>
+          <span className="tag-scan">Scan for photos</span>
         </div>
         <div className="tag-details">
-          <TagRow label="Finish" value={product.finish ?? null} />
+          <TagRow label="Finish:" value={product.finish ?? null} />
         </div>
       </div>
     </div>
@@ -123,28 +122,26 @@ const PrintTags: React.FC = () => {
     <div className="min-h-screen bg-stone-100">
       <style>{`
         .tag-sheet {
-          width: 210mm; height: 297mm; padding: 8.5mm 6mm; box-sizing: border-box; background: white;
-          display: grid; grid-template-columns: repeat(2, 99mm); grid-auto-rows: 70mm; align-content: start;
+          width: 210mm; height: 297mm; padding: 8.5mm 9mm; box-sizing: border-box; background: white;
+          display: grid; grid-template-columns: repeat(4, 48mm); grid-auto-rows: 70mm; align-content: start;
           margin: 0 auto 10mm; box-shadow: 0 1px 6px rgba(0,0,0,.15);
         }
         .tag {
-          width: 99mm; height: 70mm; box-sizing: border-box; padding: 4mm 4.5mm; overflow: hidden;
-          outline: 0.25mm dashed #9ca3af; outline-offset: -0.125mm;
-          display: flex; flex-direction: column; gap: 1.5mm; font-family: Arial, Helvetica, sans-serif; color: #111;
+          width: 48mm; height: 70mm; box-sizing: border-box; padding: 3mm; overflow: hidden;
+          outline: 0.25mm dashed #9ca3af; outline-offset: -0.125mm; text-align: center;
+          display: flex; flex-direction: column; gap: 1mm; font-family: Arial, Helvetica, sans-serif; color: #111;
         }
-        .tag-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 0.3mm solid #b8862b; padding-bottom: 1mm; }
-        .tag-logo { height: 11mm; width: auto; }
-        .tag-code { font-size: 13pt; font-weight: 700; }
-        .tag-description { font-size: 8pt; font-weight: 600; line-height: 1.25; margin: 0; text-transform: uppercase;
-          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .tag-body { display: flex; justify-content: center; align-items: center; gap: 4mm; flex: 1; min-height: 0; }
-        .tag-qr { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5mm; }
-        .tag-qr img { width: 35mm; height: 35mm; }
-        .tag-qr span { font-size: 6.5pt; color: #555; }
-        .tag-details { max-width: 40mm; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0.8mm; }
+        .tag-header { display: flex; justify-content: center; border-bottom: 0.3mm solid #b8862b; padding-bottom: 1mm; }
+        .tag-logo { height: 15mm; width: auto; }
+        .tag-body { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0.8mm; flex: 1; min-height: 0; }
+        .tag-qr { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 0.6mm; }
+        .tag-qr img { width: 34mm; height: 34mm; }
+        .tag-code { font-size: 12pt; font-weight: 700; line-height: 1.1; color: #111; }
+        .tag-scan { font-size: 5.5pt; color: #555; }
+        .tag-details { max-width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 0.5mm; }
         .tag-details:empty { display: none; }
-        .tag-row { display: flex; gap: 1.5mm; font-size: 7.5pt; line-height: 1.2; }
-        .tag-label { width: 15mm; flex-shrink: 0; color: #555; }
+        .tag-row { display: flex; justify-content: center; gap: 1mm; font-size: 6.5pt; line-height: 1.2; }
+        .tag-label { flex-shrink: 0; color: #555; }
         .tag-value { font-weight: 600; overflow-wrap: anywhere; }
         @media print {
           @page { size: A4; margin: 0; }
@@ -167,7 +164,7 @@ const PrintTags: React.FC = () => {
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Print Tags</h1>
               <p className="text-muted-foreground mt-1">
-                99 × 70 mm tear-off cards, 8 per A4 sheet. Cut along the dashed lines.
+                48 × 70 mm tear-off cards, 16 per A4 sheet. Cut along the dashed lines.
               </p>
             </div>
             <Button onClick={() => window.print()} disabled={selected.length === 0 || !qrReady} className="gap-2">

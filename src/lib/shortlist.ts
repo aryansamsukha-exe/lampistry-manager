@@ -70,6 +70,43 @@ export const refreshFromProducts = (items: ShortlistItem[], products: PublicProd
   });
 };
 
+export type SavedShortlistItem = {
+  product_id: string;
+  quantity: number;
+  finish?: string;
+  customization?: string;
+  notes?: string;
+};
+
+export const toSavedItems = (items: ShortlistItem[]): SavedShortlistItem[] =>
+  items.map((item) => ({
+    product_id: item.productId,
+    quantity: item.quantity,
+    finish: item.finish,
+    customization: item.customization,
+    notes: item.notes,
+  }));
+
+/** Adds products from a saved (server) shortlist that are missing locally; local edits win. */
+export const mergeSavedItems = (
+  items: ShortlistItem[],
+  saved: SavedShortlistItem[],
+  products: PublicProduct[],
+  now = Date.now()
+): ShortlistItem[] => {
+  const byId = new Map(products.map((p) => [p.id, p]));
+  return saved.reduce((list, entry) => {
+    const product = byId.get(entry.product_id);
+    if (!product || list.some((item) => item.productId === entry.product_id)) return list;
+    return updateInList(addToList(list, product, now), entry.product_id, {
+      quantity: entry.quantity,
+      finish: entry.finish ?? "",
+      customization: entry.customization ?? "",
+      notes: entry.notes ?? "",
+    });
+  }, items);
+};
+
 const isShortlistItem = (value: unknown): value is ShortlistItem => {
   const item = value as ShortlistItem;
   return !!item && typeof item.productId === "string" && typeof item.productCode === "string";
@@ -137,7 +174,11 @@ export const shortlistStore = {
   remove: (productId: string) => write(removeFromList(read(), productId)),
   update: (productId: string, edits: ShortlistEdits) => write(updateInList(read(), productId, edits)),
   refresh: (products: PublicProduct[]) => write(refreshFromProducts(read(), products)),
+  merge: (saved: SavedShortlistItem[], products: PublicProduct[]) =>
+    write(mergeSavedItems(read(), saved, products)),
   clear: () => write([]),
+  get: read,
+  subscribe,
 };
 
 const EMPTY: ShortlistItem[] = [];

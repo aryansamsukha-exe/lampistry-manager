@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, ImageIcon, ListChecks, Loader, Minus, Plus, QrCode, Send, Trash2,
+  AlertTriangle, ArrowLeft, CheckCircle2, CloudUpload, ImageIcon, ListChecks, Loader, MessageCircle, Minus, Plus,
+  QrCode, Send, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -13,22 +14,40 @@ import { BRAND_NAME } from "@/lib/productDisplay";
 import { PRODUCT_CATEGORIES } from "@/lib/productCategories";
 import { MAX_QUANTITY, shortlistStore, useShortlist, type ShortlistItem } from "@/lib/shortlist";
 import {
-  BUYER_TYPES, emptyEnquiryForm, validateEnquiryForm, type EnquiryForm, type EnquiryFormErrors,
+  BUYER_TYPES, emptyEnquiryForm, validateEnquiryForm, type ContactFields, type EnquiryForm, type EnquiryFormErrors,
 } from "@/lib/enquiryValidation";
 import { newSubmissionId } from "@/lib/buyerSession";
 import { getPublicProducts } from "@/services/publicProductService";
 import { submitShortlistEnquiry } from "@/services/buyerEnquiryService";
+import {
+  forgetSavedShortlist, getSavedContact, resumeShortlist, startShortlistSync, useShortlistToken, whatsappSelfLink,
+} from "@/services/savedShortlistService";
+import SaveShortlistDialog from "@/components/SaveShortlistDialog";
 
 const DRAFT_KEY = "pm.enquiryDraft";
 
 const loadDraft = (): EnquiryForm => {
+  const base = withContact(emptyEnquiryForm(), getSavedContact());
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    return raw ? { ...emptyEnquiryForm(), ...JSON.parse(raw), consent_to_contact: false } : emptyEnquiryForm();
+    const draft = raw ? (JSON.parse(raw) as Partial<EnquiryForm>) : {};
+    return { ...withContact({ ...base, ...draft }, getSavedContact()), consent_to_contact: false };
   } catch {
-    return emptyEnquiryForm();
+    return base;
   }
 };
+
+/** Fills empty name/company/phone/email fields from the contact saved with the shortlist. */
+const withContact = (form: EnquiryForm, contact: ContactFields | null): EnquiryForm =>
+  contact
+    ? {
+        ...form,
+        full_name: form.full_name || contact.full_name,
+        company_name: form.company_name || contact.company_name,
+        phone: form.phone || contact.phone,
+        email: form.email || contact.email,
+      }
+    : form;
 
 const SERVER_FIELD_MESSAGES: Record<string, string> = {
   items: "Please check the quantities and notes in your shortlist.",
@@ -136,21 +155,35 @@ const Shortlist: React.FC = () => {
   const [submittedItems, setSubmittedItems] = useState<ShortlistItem[]>([]);
   const submissionId = useRef<string | null>(null);
 
-  // Validate the stored shortlist against current products once on open.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const shortlistToken = useShortlistToken();
+  const [showSave, setShowSave] = useState(false);
+  const savedContact = getSavedContact();
+
   useEffect(() => {
-    const ids = items.map((item) => item.productId);
-    if (ids.length === 0) {
-      setChecking(false);
-      return;
-    }
-    getPublicProducts(ids)
-      .then((products) => {
-        const available = new Set(products.map((p) => p.id));
-        setUnavailable(new Set(ids.filter((id) => !available.has(id))));
-        shortlistStore.refresh(products);
-      })
-      .catch(() => undefined)
-      .finally(() => setChecking(false));
+    if (shortlistToken) setForm((current) => withContact(current, getSavedContact()));
+  }, [shortlistToken]);
+
+  // On open: reopen a saved shortlist from a link, then check every product is still available.
+  useEffect(() => {
+    startShortlistSync();
+    const resumeToken = searchParams.get("resume");
+    const init = async () => {
+      if (resumeToken) {
+        setSearchParams({}, { replace: true });
+        const resumed = await resumeShortlist(resumeToken);
+        if (resumed.status === "ok") toast.success(`Welcome back${resumed.firstName ? `, ${resumed.firstName}` : ""}! Your shortlist is restored.`);
+        else if (resumed.status === "not_found") toast.error("This shortlist link has expired or was already sent as a request.");
+        else toast.error("Couldn't open the saved shortlist. Please check your connection.");
+      }
+      const ids = shortlistStore.get().map((item) => item.productId);
+      if (ids.length === 0) return;
+      const products = await getPublicProducts(ids);
+      const available = new Set(products.map((p) => p.id));
+      setUnavailable(new Set(ids.filter((id) => !available.has(id))));
+      shortlistStore.refresh(products);
+    };
+    init().catch(() => undefined).finally(() => setChecking(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -173,7 +206,12 @@ const Shortlist: React.FC = () => {
 
   const set = <K extends keyof EnquiryForm>(key: K, value: EnquiryForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
-    setErrors((current) => ({ ...current, [key]: undefined }));
+    const paired = (["full_name", "company_name"] as string[]).includes(key)
+      ? { full_name: undefined, company_name: undefined }
+      : (["phone", "email"] as string[]).includes(key)
+        ? { phone: undefined, email: undefined }
+        : {};
+    setErrors((current) => ({ ...current, ...paired, [key]: undefined }));
   };
 
   const toggleCategory = (category: string) =>
@@ -199,13 +237,14 @@ const Shortlist: React.FC = () => {
 
     submissionId.current ??= newSubmissionId();
     setSubmitting(true);
-    const result = await submitShortlistEnquiry(submissionId.current, form, items);
+    const result = await submitShortlistEnquiry(submissionId.current, form, items, shortlistToken);
     setSubmitting(false);
 
     switch (result.status) {
       case "ok":
         setReference(result.reference);
         setSubmittedItems(items);
+        forgetSavedShortlist();
         shortlistStore.clear();
         setStep("done");
         window.scrollTo({ top: 0 });
@@ -247,7 +286,9 @@ const Shortlist: React.FC = () => {
           <div className="rounded-2xl border border-emerald-200 bg-white p-6 text-center shadow-sm">
             <CheckCircle2 className="mx-auto mb-3 h-12 w-12 text-emerald-600" />
             <h1 className="text-2xl font-serif font-bold text-stone-900">Quotation request received</h1>
-            <p className="mt-2 text-stone-600">Thank you, {form.full_name.split(" ")[0]}. Our team will contact you about your request.</p>
+            <p className="mt-2 text-stone-600">
+              Thank you{form.full_name.trim() ? `, ${form.full_name.trim().split(" ")[0]}` : ""}. Our team will contact you about your request.
+            </p>
             <div className="mx-auto mt-5 inline-block rounded-xl bg-stone-100 px-5 py-3">
               <p className="text-xs uppercase tracking-widest text-stone-500">Your reference</p>
               <p className="text-xl font-bold tracking-wide text-stone-900">{reference}</p>
@@ -265,6 +306,15 @@ const Shortlist: React.FC = () => {
             </ul>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (items.length === 0 && checking) {
+    return (
+      <div className="min-h-screen bg-stone-50">
+        {header}
+        <div className="flex justify-center py-16"><Loader className="h-8 w-8 animate-spin text-stone-400" /></div>
       </div>
     );
   }
@@ -287,6 +337,7 @@ const Shortlist: React.FC = () => {
   return (
     <div className="min-h-screen bg-stone-50 pb-28">
       {header}
+      <SaveShortlistDialog open={showSave} onOpenChange={setShowSave} />
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
         {step === "review" ? (
           <>
@@ -296,6 +347,23 @@ const Shortlist: React.FC = () => {
                 {items.length} product{items.length === 1 ? "" : "s"} · {totalPieces} pcs. Set quantities, then request a quotation. Keep scanning product tags to add more.
               </p>
             </div>
+            {shortlistToken ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4" /> Saved — changes are kept automatically.</span>
+                {savedContact?.phone && (
+                  <a href={whatsappSelfLink(savedContact.phone, shortlistToken)} target="_blank" rel="noreferrer"
+                    className="flex items-center gap-1 font-semibold underline">
+                    <MessageCircle className="h-4 w-4" /> Send link to my WhatsApp
+                  </a>
+                )}
+              </div>
+            ) : (
+              <button type="button" onClick={() => setShowSave(true)}
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-sm text-amber-900">
+                <span className="flex items-center gap-2"><CloudUpload className="h-4 w-4 shrink-0" /> Don't lose your selection — save it with your name and WhatsApp.</span>
+                <span className="shrink-0 font-semibold underline">Save</span>
+              </button>
+            )}
             {presentUnavailable.length > 0 && (
               <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 <span>{presentUnavailable.length} product(s) are no longer available.</span>
@@ -316,33 +384,37 @@ const Shortlist: React.FC = () => {
             </button>
             <div>
               <h1 className="text-2xl font-serif font-bold text-stone-900">Request wholesale quotation</h1>
-              <p className="text-sm text-stone-500">Tell us how to reach you. Fields marked * are required.</p>
+              <p className="text-sm text-stone-500">
+                Tell us how to reach you. Your name or company, and a phone/WhatsApp number or email, are enough. Fields marked * are required.
+              </p>
             </div>
             <div className="grid gap-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:grid-cols-2">
               <div>
-                <Label htmlFor="full_name">Full name *</Label>
+                <Label htmlFor="full_name">Full name</Label>
                 <Input id="full_name" autoComplete="name" maxLength={120} value={form.full_name} onChange={(e) => set("full_name", e.target.value)} />
-                <FieldError message={errors.full_name} />
               </div>
               <div>
-                <Label htmlFor="company_name">Company *</Label>
+                <Label htmlFor="company_name">Company</Label>
                 <Input id="company_name" autoComplete="organization" maxLength={160} value={form.company_name} onChange={(e) => set("company_name", e.target.value)} />
-                <FieldError message={errors.company_name} />
+              </div>
+              <div className="sm:col-span-2 -mt-3">
+                <FieldError message={errors.full_name ?? errors.company_name} />
               </div>
               <div>
-                <Label htmlFor="phone">Phone (with country code) *</Label>
+                <Label htmlFor="phone">Phone / WhatsApp (with country code)</Label>
                 <Input id="phone" type="tel" autoComplete="tel" placeholder="+91 98765 43210" maxLength={32} value={form.phone} onChange={(e) => set("phone", e.target.value)} />
-                <FieldError message={errors.phone} />
               </div>
               <div>
-                <Label htmlFor="whatsapp">WhatsApp (if different)</Label>
-                <Input id="whatsapp" type="tel" maxLength={32} value={form.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} />
-                <FieldError message={errors.whatsapp} />
-              </div>
-              <div className="sm:col-span-2">
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" type="email" autoComplete="email" maxLength={254} value={form.email} onChange={(e) => set("email", e.target.value)} />
-                <FieldError message={errors.email} />
+              </div>
+              <div className="sm:col-span-2 -mt-3">
+                <FieldError message={errors.phone ?? errors.email} />
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor="whatsapp">WhatsApp (if different from phone)</Label>
+                <Input id="whatsapp" type="tel" maxLength={32} value={form.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} />
+                <FieldError message={errors.whatsapp} />
               </div>
               <div className="sm:col-span-2">
                 <Label>Business type *</Label>

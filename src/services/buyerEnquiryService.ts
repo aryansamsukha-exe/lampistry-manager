@@ -42,12 +42,14 @@ export type SubmitEnquiryResult =
 export const submitShortlistEnquiry = async (
   submissionId: string,
   form: EnquiryForm,
-  items: ShortlistItem[]
+  items: ShortlistItem[],
+  shortlistToken: string | null
 ): Promise<SubmitEnquiryResult> => {
   const payload = {
     submission_id: submissionId,
     session_id: getBuyerSessionId(),
     tracking_code: getTrackingCode(),
+    shortlist_token: shortlistToken,
     lead: {
       ...form,
       email: form.email.trim(),

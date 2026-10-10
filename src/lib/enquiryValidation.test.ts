@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyEnquiryForm, validateEnquiryForm, type EnquiryForm } from "./enquiryValidation";
+import { contactErrors, emptyEnquiryForm, validateEnquiryForm, type EnquiryForm } from "./enquiryValidation";
 import { categorizeProduct } from "./productCategories";
 
 const validForm = (): EnquiryForm => ({
@@ -19,9 +19,19 @@ describe("validateEnquiryForm", () => {
 
   it("requires the short list of mandatory fields", () => {
     const errors = validateEnquiryForm(emptyEnquiryForm());
-    expect(Object.keys(errors).sort()).toEqual(
-      ["buyer_type", "city", "company_name", "country", "full_name", "phone"].sort()
-    );
+    expect(Object.keys(errors).sort()).toEqual(["buyer_type", "city", "country", "full_name", "phone"].sort());
+  });
+
+  it("accepts a company instead of a name and an email instead of a phone", () => {
+    expect(validateEnquiryForm({ ...validForm(), full_name: "", phone: "", email: "buy@shop.com" })).toEqual({});
+  });
+
+  it("needs a name or company and a phone or email", () => {
+    expect(contactErrors({ full_name: "", company_name: "", phone: "", email: "" })).toEqual({
+      full_name: expect.any(String),
+      phone: expect.any(String),
+    });
+    expect(contactErrors({ full_name: "Asha", company_name: "", phone: "+91 98765 43210", email: "" })).toEqual({});
   });
 
   it("checks phone, WhatsApp and email formats", () => {

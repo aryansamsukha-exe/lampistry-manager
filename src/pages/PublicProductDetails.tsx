@@ -11,6 +11,8 @@ import { formatCbm } from "@/services/catalogService";
 import { trackProductEvent } from "@/services/buyerEnquiryService";
 import { rememberTrackingCode } from "@/lib/buyerSession";
 import { MAX_SHORTLIST_ITEMS, shortlistStore, useShortlist } from "@/lib/shortlist";
+import { startShortlistSync, wasSavePromptAnswered } from "@/services/savedShortlistService";
+import SaveShortlistDialog from "@/components/SaveShortlistDialog";
 
 const Spec: React.FC<{ icon: React.ReactNode; label: string; value: string | null; wide?: boolean }> = ({
   icon, label, value, wide,
@@ -48,12 +50,15 @@ const PublicProductDetails: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [imageFailed, setImageFailed] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  const [showSavePrompt, setShowSavePrompt] = useState(false);
   const shortlist = useShortlist();
   const inShortlist = !!product && shortlist.some((item) => item.productId === product.id);
 
   useEffect(() => {
     rememberTrackingCode(trackingCode);
   }, [trackingCode]);
+
+  useEffect(startShortlistSync, []);
 
   useEffect(() => {
     const load = async () => {
@@ -87,6 +92,7 @@ const PublicProductDetails: React.FC = () => {
     shortlistStore.add(product);
     trackProductEvent(product.id, "shortlist_add", trackingCode ? "exhibition_qr" : "product_qr");
     toast.success(`${product.product_code} added to your shortlist`);
+    if (!wasSavePromptAnswered()) setShowSavePrompt(true);
   };
 
   if (isLoading) {
@@ -124,6 +130,7 @@ const PublicProductDetails: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-stone-50 pb-28">
+      <SaveShortlistDialog open={showSavePrompt} onOpenChange={setShowSavePrompt} />
       {zoomed && product.imageUrl && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-white p-4"

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  MAX_QUANTITY, MAX_SHORTLIST_ITEMS, addToList, clampQuantity, parseStoredList, refreshFromProducts,
-  removeFromList, updateInList,
+  MAX_QUANTITY, MAX_SHORTLIST_ITEMS, addToList, clampQuantity, mergeSavedItems, parseStoredList,
+  refreshFromProducts, removeFromList, toSavedItems, updateInList,
 } from "./shortlist";
 import type { PublicProduct } from "@/services/publicProductService";
 
@@ -46,6 +46,28 @@ describe("shortlist list operations", () => {
     const list = updateInList(addToList([], product("a")), "a", { quantity: 12 });
     const [item] = refreshFromProducts(list, [product("a", { product_code: "NEW", imageUrl: "x.jpg" })]);
     expect(item).toMatchObject({ productCode: "NEW", imageUrl: "x.jpg", quantity: 12 });
+  });
+});
+
+describe("mergeSavedItems", () => {
+  it("adds saved products that are missing locally and keeps local edits", () => {
+    const local = updateInList(addToList([], product("a")), "a", { quantity: 5 });
+    const merged = mergeSavedItems(
+      local,
+      [
+        { product_id: "a", quantity: 99 },
+        { product_id: "b", quantity: 7, finish: "Brass" },
+        { product_id: "gone", quantity: 3 },
+      ],
+      [product("a"), product("b")]
+    );
+    expect(merged.map((i) => [i.productId, i.quantity])).toEqual([["a", 5], ["b", 7]]);
+    expect(merged[1].finish).toBe("Brass");
+  });
+
+  it("round-trips through the saved format", () => {
+    const list = updateInList(addToList([], product("a")), "a", { quantity: 4, notes: "rush" });
+    expect(toSavedItems(list)).toEqual([{ product_id: "a", quantity: 4, finish: "", customization: "", notes: "rush" }]);
   });
 });
 

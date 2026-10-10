@@ -246,6 +246,47 @@ DROP TRIGGER IF EXISTS buyer_shortlists_updated_at ON public.buyer_shortlists;
 CREATE TRIGGER buyer_shortlists_updated_at BEFORE UPDATE ON public.buyer_shortlists
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ── outgoing email queue ──────────────────────────────────────────────────────
+-- Rows are added by database functions and sent by the send-emails Edge Function
+-- (supabase/functions/send-emails). The email provider key lives only in Edge Function secrets.
+
+CREATE TABLE IF NOT EXISTS public.email_outbox (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  to_email TEXT NOT NULL CHECK (char_length(to_email) <= 254),
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sending', 'sent', 'failed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  locked_at TIMESTAMPTZ,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.email_outbox DROP CONSTRAINT IF EXISTS email_outbox_kind_check;
+ALTER TABLE public.email_outbox ADD CONSTRAINT email_outbox_kind_check
+  CHECK (kind IN ('shortlist_link', 'enquiry_confirmation', 'quotation'));
+CREATE INDEX IF NOT EXISTS email_outbox_pending_idx ON public.email_outbox(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS email_outbox_recipient_idx ON public.email_outbox(to_email, kind, created_at DESC);
+
+-- Atomically picks emails to send (used only by the Edge Function with the service role).
+CREATE OR REPLACE FUNCTION public.claim_email_outbox(p_limit INTEGER DEFAULT 20) RETURNS SETOF public.email_outbox
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  UPDATE public.email_outbox o
+  SET status = 'sending', attempts = o.attempts + 1, locked_at = now()
+  WHERE o.id IN (
+    SELECT e.id FROM public.email_outbox e
+    WHERE e.attempts < 5
+      AND ((e.status = 'pending' AND e.next_attempt_at <= now())
+        OR (e.status = 'sending' AND e.locked_at < now() - interval '10 minutes'))
+    ORDER BY e.created_at
+    LIMIT least(greatest(p_limit, 1), 50)
+    FOR UPDATE SKIP LOCKED
+  )
+  RETURNING o.*;
+$$;
+
 -- ── product analytics ─────────────────────────────────────────────────────────
 -- No personal data: session_id is a random ID generated in the visitor's browser.
 
@@ -342,11 +383,16 @@ ALTER TABLE public.enquiry_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.product_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.public_rate_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.buyer_shortlists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.email_outbox ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON public.team_members, public.exhibitions, public.exhibition_members, public.enquiry_statuses,
   public.buyer_leads, public.enquiries, public.enquiry_items, public.product_events, public.public_rate_limits,
-  public.buyer_shortlists
+  public.buyer_shortlists, public.email_outbox
   FROM anon;
+
+DROP POLICY IF EXISTS "Staff read email outbox" ON public.email_outbox;
+CREATE POLICY "Staff read email outbox" ON public.email_outbox
+  FOR SELECT TO authenticated USING (public.is_staff_of(owner_id));
 
 DROP POLICY IF EXISTS "Staff manage buyer shortlists" ON public.buyer_shortlists;
 CREATE POLICY "Staff manage buyer shortlists" ON public.buyer_shortlists
@@ -515,6 +561,8 @@ DECLARE
   v_categories TEXT[];
   v_phone_norm TEXT;
   v_field TEXT;
+  v_confirm_email TEXT;
+  v_confirm_sent BOOLEAN := false;
   v_product_ids UUID[];
   v_missing UUID[];
   v_owner UUID;
@@ -679,7 +727,28 @@ BEGIN
     WHERE s.token_hash = md5(p_payload ->> 'shortlist_token') AND s.owner_id = v_owner;
   END IF;
 
-  RETURN jsonb_build_object('ok', true, 'reference', v_reference);
+  -- Confirmation email to the buyer (address from this form, or one they gave earlier).
+  SELECT coalesce(v_email, l.email) INTO v_confirm_email FROM public.buyer_leads l WHERE l.id = v_lead_id;
+  IF v_confirm_email IS NOT NULL AND (
+    SELECT count(*) FROM public.email_outbox o
+    WHERE o.to_email = v_confirm_email AND o.kind = 'enquiry_confirmation' AND o.created_at > now() - interval '1 day'
+  ) < 5 THEN
+    INSERT INTO public.email_outbox (owner_id, kind, to_email, payload)
+    SELECT v_owner, 'enquiry_confirmation', v_confirm_email, jsonb_build_object(
+      'reference', v_reference,
+      'name', coalesce(split_part(v_name, ' ', 1), v_company),
+      'items', coalesce((
+        SELECT jsonb_agg(jsonb_build_object(
+          'code', ei.product_code, 'description', ei.product_description, 'quantity', ei.quantity,
+          'finish', ei.requested_finish, 'customization', ei.customization, 'notes', ei.notes
+        ) ORDER BY ei.sort_order)
+        FROM public.enquiry_items ei WHERE ei.enquiry_id = v_enquiry_id
+      ), '[]'::jsonb)
+    );
+    v_confirm_sent := true;
+  END IF;
+
+  RETURN jsonb_build_object('ok', true, 'reference', v_reference, 'emailed', v_confirm_sent);
 END $$;
 
 -- ── saved shortlists (public, token based) ────────────────────────────────────
@@ -719,6 +788,7 @@ DECLARE
   v_email TEXT := nullif(lower(btrim(p_payload ->> 'email')), '');
   v_phone_norm TEXT := nullif(regexp_replace(coalesce(p_payload ->> 'phone', ''), '[^0-9]', '', 'g'), '');
   v_field TEXT;
+  v_emailed BOOLEAN := false;
   v_consent BOOLEAN := coalesce(p_payload ->> 'consent_to_contact', '') = 'true';
   v_first_id TEXT := p_payload -> 'items' -> 0 ->> 'product_id';
   v_owner UUID;
@@ -781,7 +851,28 @@ BEGIN
   INSERT INTO public.buyer_shortlists (owner_id, lead_id, token_hash, exhibition_id, items, item_count)
   VALUES (v_owner, v_lead_id, md5(v_token), v_exhibition, v_items, jsonb_array_length(v_items));
 
-  RETURN jsonb_build_object('ok', true, 'token', v_token);
+  -- Email the buyer their private link (at most 3 per address per day, so the form can't be used to spam).
+  IF v_email IS NOT NULL AND (
+    SELECT count(*) FROM public.email_outbox o
+    WHERE o.to_email = v_email AND o.kind = 'shortlist_link' AND o.created_at > now() - interval '1 day'
+  ) < 3 THEN
+    INSERT INTO public.email_outbox (owner_id, kind, to_email, payload)
+    SELECT v_owner, 'shortlist_link', v_email, jsonb_build_object(
+      'token', v_token,
+      'name', coalesce(split_part(v_name, ' ', 1), v_company),
+      'item_count', jsonb_array_length(v_items),
+      'items', coalesce((
+        SELECT jsonb_agg(jsonb_build_object('code', p.product_code, 'description', p.description, 'quantity', i.value -> 'quantity')
+                         ORDER BY i.ordinality)
+        FROM jsonb_array_elements(v_items) WITH ORDINALITY AS i(value, ordinality)
+        JOIN public.products p ON p.id = (i.value ->> 'product_id')::uuid
+        WHERE i.ordinality <= 30
+      ), '[]'::jsonb)
+    );
+    v_emailed := true;
+  END IF;
+
+  RETURN jsonb_build_object('ok', true, 'token', v_token, 'emailed', v_emailed);
 END $$;
 
 -- Replaces the saved items of a shortlist (called whenever the buyer changes it).
@@ -837,6 +928,8 @@ REVOKE ALL ON FUNCTION public._resolve_exhibition(UUID, TEXT) FROM PUBLIC, anon,
 REVOKE ALL ON FUNCTION public.set_updated_at() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public._clean_shortlist_items(JSONB, UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public._contact_error(TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.claim_email_outbox(INTEGER) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_email_outbox(INTEGER) TO service_role;
 
 GRANT EXECUTE ON FUNCTION public.is_staff_of(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_admin_of(UUID) TO authenticated;

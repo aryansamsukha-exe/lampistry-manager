@@ -34,7 +34,7 @@ export const trackProductEvent = (
 };
 
 export type SubmitEnquiryResult =
-  | { status: "ok"; reference: string }
+  | { status: "ok"; reference: string; emailed: boolean }
   | { status: "validation"; field: string }
   | { status: "unavailable_products"; productIds: string[] }
   | { status: "rate_limited" | "invalid_request" | "network" };
@@ -66,7 +66,7 @@ export const submitShortlistEnquiry = async (
 
   const { data, error } = await db.rpc("submit_shortlist_enquiry", { p_payload: payload });
   if (error || !data) return { status: "network" };
-  if (data.ok) return { status: "ok", reference: data.reference };
+  if (data.ok) return { status: "ok", reference: data.reference, emailed: data.emailed === true };
   if (data.error === "validation") return { status: "validation", field: data.field };
   if (data.error === "unavailable_products") return { status: "unavailable_products", productIds: data.product_ids ?? [] };
   return { status: data.error === "rate_limited" ? "rate_limited" : "invalid_request" };

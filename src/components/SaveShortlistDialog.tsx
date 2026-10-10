@@ -24,6 +24,7 @@ const SaveShortlistDialog: React.FC<Props> = ({ open, onOpenChange }) => {
   const [errors, setErrors] = useState<EnquiryFormErrors>({});
   const [saving, setSaving] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [emailed, setEmailed] = useState(false);
 
   const set = (key: keyof ContactFields) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setContact((current) => ({ ...current, [key]: e.target.value }));
@@ -55,6 +56,7 @@ const SaveShortlistDialog: React.FC<Props> = ({ open, onOpenChange }) => {
     const result = await saveShortlist(contact, consent);
     setSaving(false);
     if (result.status === "ok") {
+      setEmailed(result.emailed);
       setToken(getShortlistToken());
       return;
     }
@@ -79,6 +81,11 @@ const SaveShortlistDialog: React.FC<Props> = ({ open, onOpenChange }) => {
                 Keep scanning product tags — everything you add is saved automatically. Keep the link to open your list on any phone.
               </DialogDescription>
             </DialogHeader>
+            {emailed && (
+              <p className="rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">
+                We've also emailed the link to <b>{contact.email.trim()}</b>.
+              </p>
+            )}
             {contact.phone.trim() && (
               <a
                 href={whatsappSelfLink(contact.phone, token)}

@@ -75,7 +75,7 @@ export const skipSavePrompt = () => storage.set(PROMPT_KEY, "skipped");
 // ── server calls ──
 
 export type SaveShortlistResult =
-  | { status: "ok" }
+  | { status: "ok"; emailed: boolean }
   | { status: "validation"; field: string }
   | { status: "rate_limited" | "error" };
 
@@ -101,7 +101,7 @@ export const saveShortlist = async (contact: BuyerContact, consent: boolean): Pr
     storage.set(CONTACT_KEY, JSON.stringify(clean));
     storage.set(PROMPT_KEY, "saved");
     notify();
-    return { status: "ok" };
+    return { status: "ok", emailed: data.emailed === true };
   }
   if (data.error === "validation") return { status: "validation", field: data.field };
   return { status: data.error === "rate_limited" ? "rate_limited" : "error" };

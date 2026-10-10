@@ -3,7 +3,9 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, ImageIcon, Loader, Package, Ruler, Box, Weight, Palette, Maximize2, X, Check, Plus, ListChecks, Tag,
+  MessageSquareText,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { BRAND_NAME, formatItemSize, formatNetWeight, formatPackingSize } from "@/lib/productDisplay";
 import { toast } from "sonner";
 import { getPublicProductByCode, getPublicProductById, type PublicProduct } from "@/services/publicProductService";
@@ -52,7 +54,15 @@ const PublicProductDetails: React.FC = () => {
   const [zoomed, setZoomed] = useState(false);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const shortlist = useShortlist();
-  const inShortlist = !!product && shortlist.some((item) => item.productId === product.id);
+  const shortlistItem = product ? shortlist.find((item) => item.productId === product.id) : undefined;
+  const inShortlist = !!shortlistItem;
+  const [draftRemarks, setDraftRemarks] = useState("");
+  const remarks = shortlistItem ? shortlistItem.notes : draftRemarks;
+
+  const setRemarks = (value: string) => {
+    if (shortlistItem) shortlistStore.update(shortlistItem.productId, { notes: value });
+    else setDraftRemarks(value);
+  };
 
   useEffect(() => {
     rememberTrackingCode(trackingCode);
@@ -90,6 +100,8 @@ const PublicProductDetails: React.FC = () => {
       return;
     }
     shortlistStore.add(product);
+    if (draftRemarks.trim()) shortlistStore.update(product.id, { notes: draftRemarks });
+    setDraftRemarks("");
     trackProductEvent(product.id, "shortlist_add", trackingCode ? "exhibition_qr" : "product_qr");
     toast.success(`${product.product_code} added to your shortlist`);
     if (!wasSavePromptAnswered()) setShowSavePrompt(true);
@@ -211,6 +223,24 @@ const PublicProductDetails: React.FC = () => {
             <Spec icon={<Weight className="w-3.5 h-3.5" />} label="Net weight" value={formatNetWeight(product)} />
             <Spec icon={<Palette className="w-3.5 h-3.5" />} label="Finish" value={product.finish ?? null} />
           </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
+          <label htmlFor="remarks" className="flex items-center gap-1.5 text-sm font-semibold text-stone-700">
+            <MessageSquareText className="w-4 h-4" /> Your remarks for this product
+          </label>
+          <Textarea
+            id="remarks"
+            rows={3}
+            maxLength={1000}
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+            placeholder="e.g. need in 3 sizes, different colour, sample required, quantity per design…"
+            className="mt-2"
+          />
+          <p className="mt-1.5 text-xs text-stone-400">
+            {inShortlist ? "Saved with this product in your shortlist." : "Will be saved when you add this product to your shortlist."}
+          </p>
         </div>
 
         <p className="text-center text-xs text-stone-400 uppercase tracking-widest">Powered by ProductMaster</p>

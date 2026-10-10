@@ -112,7 +112,7 @@ const ItemRow: React.FC<{ item: ShortlistItem; unavailable: boolean }> = ({ item
             </div>
             <span className="text-xs text-stone-500">pcs</span>
             <button type="button" className="text-xs font-medium text-amber-700 hover:underline" onClick={() => setShowDetails((v) => !v)}>
-              {showDetails ? "Hide details" : "Add finish / customisation / notes"}
+              {showDetails ? "Hide details" : "Add finish / customisation / remarks"}
             </button>
           </div>
         </div>
@@ -130,7 +130,7 @@ const ItemRow: React.FC<{ item: ShortlistItem; unavailable: boolean }> = ({ item
               onChange={(e) => shortlistStore.update(item.productId, { customization: e.target.value })} />
           </div>
           <div className="sm:col-span-2">
-            <Label className="text-xs">Notes</Label>
+            <Label className="text-xs">Remarks</Label>
             <Textarea rows={2} maxLength={1000} value={item.notes}
               onChange={(e) => shortlistStore.update(item.productId, { notes: e.target.value })} />
           </div>
@@ -153,6 +153,7 @@ const Shortlist: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [reference, setReference] = useState<string | null>(null);
   const [submittedItems, setSubmittedItems] = useState<ShortlistItem[]>([]);
+  const [confirmationEmailed, setConfirmationEmailed] = useState(false);
   const submissionId = useRef<string | null>(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -243,6 +244,7 @@ const Shortlist: React.FC = () => {
     switch (result.status) {
       case "ok":
         setReference(result.reference);
+        setConfirmationEmailed(result.emailed);
         setSubmittedItems(items);
         forgetSavedShortlist();
         shortlistStore.clear();
@@ -293,6 +295,9 @@ const Shortlist: React.FC = () => {
               <p className="text-xs uppercase tracking-widest text-stone-500">Your reference</p>
               <p className="text-xl font-bold tracking-wide text-stone-900">{reference}</p>
             </div>
+            {confirmationEmailed && (
+              <p className="mt-4 text-sm text-stone-500">A confirmation with your product list is on its way to your email.</p>
+            )}
           </div>
           <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <p className="mb-3 text-sm font-semibold text-stone-700">Products requested</p>

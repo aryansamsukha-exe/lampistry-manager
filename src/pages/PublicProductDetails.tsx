@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Separator } from "@/components/ui/separator";
 import {
-  ArrowLeft, ImageIcon, Loader, Package, Ruler, DollarSign, Box, Weight, Palette, Maximize2, X,
+  ArrowLeft, ImageIcon, Loader, Package, Ruler, Box, Weight, Palette, Maximize2, X, Check, Plus, ListChecks, Tag,
 } from "lucide-react";
-import { formatInr, getUsdToInrRate } from "@/services/exchangeRateService";
-import {
-  BRAND_NAME, formatItemSize, formatNetWeight, formatPackingSize, formatPrice,
-} from "@/lib/productDisplay";
-import type { Product } from "@/components/ProductCard";
+import { BRAND_NAME, formatItemSize, formatNetWeight, formatPackingSize } from "@/lib/productDisplay";
 import { toast } from "sonner";
-import { getPublicProductByCode, getPublicProductById } from "@/services/publicProductService";
+import { getPublicProductByCode, getPublicProductById, type PublicProduct } from "@/services/publicProductService";
 import { formatCbm } from "@/services/catalogService";
+import { trackProductEvent } from "@/services/buyerEnquiryService";
+import { rememberTrackingCode } from "@/lib/buyerSession";
+import { MAX_SHORTLIST_ITEMS, shortlistStore, useShortlist } from "@/lib/shortlist";
 
 const Spec: React.FC<{ icon: React.ReactNode; label: string; value: string | null; wide?: boolean }> = ({
   icon, label, value, wide,
@@ -25,40 +24,70 @@ const Spec: React.FC<{ icon: React.ReactNode; label: string; value: string | nul
     </div>
   ) : null;
 
+export const ShortlistLink: React.FC<{ count: number }> = ({ count }) => (
+  <Link
+    to="/shortlist"
+    className="relative flex items-center gap-1.5 rounded-full border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-100"
+  >
+    <ListChecks className="w-4 h-4" />
+    Shortlist
+    {count > 0 && (
+      <span className="ml-0.5 min-w-5 rounded-full bg-amber-600 px-1.5 text-center text-xs font-semibold text-white">
+        {count}
+      </span>
+    )}
+  </Link>
+);
+
 const PublicProductDetails: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { productId } = useParams();
   const productCode = searchParams.get("code");
-  const [product, setProduct] = useState<Product | null>(null);
+  const trackingCode = searchParams.get("ex");
+  const [product, setProduct] = useState<PublicProduct | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [imageFailed, setImageFailed] = useState(false);
   const [zoomed, setZoomed] = useState(false);
-  const [inrRate, setInrRate] = useState<number | null>(null);
+  const shortlist = useShortlist();
+  const inShortlist = !!product && shortlist.some((item) => item.productId === product.id);
 
   useEffect(() => {
-    getUsdToInrRate().then(setInrRate);
-  }, []);
+    rememberTrackingCode(trackingCode);
+  }, [trackingCode]);
 
   useEffect(() => {
-    const fetch = async () => {
+    const load = async () => {
       if (!productCode && !productId) {
         setIsLoading(false);
         return;
       }
       try {
-        const data = productId
-          ? await getPublicProductById(productId)
-          : await getPublicProductByCode(productCode!);
-        if (data) setProduct(data);
-        else toast.error("Product not found");
+        const data = productId ? await getPublicProductById(productId) : await getPublicProductByCode(productCode!);
+        if (data) {
+          setProduct(data);
+          trackProductEvent(data.id, "view", trackingCode ? "exhibition_qr" : "product_qr");
+        } else {
+          toast.error("Product not found");
+        }
       } catch {
         toast.error("Failed to load product details");
       } finally {
         setIsLoading(false);
       }
     };
-    fetch();
-  }, [productCode, productId]);
+    load();
+  }, [productCode, productId, trackingCode]);
+
+  const addToShortlist = () => {
+    if (!product) return;
+    if (shortlist.length >= MAX_SHORTLIST_ITEMS) {
+      toast.error(`Your shortlist can hold up to ${MAX_SHORTLIST_ITEMS} products.`);
+      return;
+    }
+    shortlistStore.add(product);
+    trackProductEvent(product.id, "shortlist_add", trackingCode ? "exhibition_qr" : "product_qr");
+    toast.success(`${product.product_code} added to your shortlist`);
+  };
 
   if (isLoading) {
     return (
@@ -94,7 +123,7 @@ const PublicProductDetails: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-stone-50">
+    <div className="min-h-screen bg-stone-50 pb-28">
       {zoomed && product.imageUrl && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-white p-4"
@@ -114,18 +143,13 @@ const PublicProductDetails: React.FC = () => {
 
       {/* header */}
       <div className="bg-white border-b border-stone-200">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
-          <button
-            onClick={() => window.history.length > 1 ? window.history.back() : (window.location.href = "/")}
-            className="flex items-center gap-2 text-stone-500 hover:text-stone-800 transition-colors text-sm font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" /> Back
-          </button>
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <p className="text-xs font-semibold uppercase tracking-widest text-stone-500">{BRAND_NAME}</p>
+          <ShortlistLink count={shortlist.length} />
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
         {/* product image */}
         <div className="relative rounded-2xl overflow-hidden bg-white border border-stone-200 shadow-sm aspect-square sm:aspect-[4/3]">
           {product.imageUrl && !imageFailed ? (
@@ -150,29 +174,26 @@ const PublicProductDetails: React.FC = () => {
 
         {/* product info card */}
         <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-          {/* code + title */}
           <div className="p-6 pb-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-1">{product.product_code}</p>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <p className="text-xs font-semibold uppercase tracking-widest text-stone-400">{product.product_code}</p>
+              {product.category && (
+                <span className="flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
+                  <Tag className="w-3 h-3" /> {product.category}
+                </span>
+              )}
+            </div>
             <h1 className="text-2xl font-serif font-bold text-stone-900 leading-tight">
               {product.description || "Product Details"}
             </h1>
+            <p className="mt-2 text-sm text-stone-500">
+              Wholesale prices on request. Add products to your shortlist and request a quotation.
+            </p>
           </div>
 
           <Separator />
 
-          {/* specs grid */}
           <div className="p-6 grid grid-cols-2 gap-5">
-            {formatPrice(product) && (
-              <div className="col-span-2 flex flex-col gap-1">
-                <div className="flex items-center gap-1.5 text-xs text-stone-400 uppercase tracking-wide">
-                  <DollarSign className="w-3.5 h-3.5" /> Price (USD)
-                </div>
-                <p className="text-2xl font-bold text-stone-900">{formatPrice(product)}</p>
-                {inrRate && (
-                  <p className="text-sm text-stone-400">≈ {formatInr(product.price * inrRate)} (approx.)</p>
-                )}
-              </div>
-            )}
             <Spec icon={<Ruler className="w-3.5 h-3.5" />} label="Item size (L × W × H)" value={formatItemSize(product)} wide />
             <Spec icon={<Package className="w-3.5 h-3.5" />} label="Packing size (L × W × H)" value={formatPackingSize(product)} wide />
             <Spec
@@ -185,10 +206,34 @@ const PublicProductDetails: React.FC = () => {
           </div>
         </div>
 
-        {/* footer */}
-        <p className="text-center text-xs text-stone-400 uppercase tracking-widest">
-          Powered by ProductMaster
-        </p>
+        <p className="text-center text-xs text-stone-400 uppercase tracking-widest">Powered by ProductMaster</p>
+      </div>
+
+      {/* sticky shortlist actions */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 backdrop-blur">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex gap-3">
+          {inShortlist ? (
+            <>
+              <div className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                <Check className="w-4 h-4" /> In your shortlist
+              </div>
+              <Link
+                to="/shortlist"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 py-3 text-sm font-semibold text-white hover:bg-stone-800"
+              >
+                <ListChecks className="w-4 h-4" /> View shortlist ({shortlist.length})
+              </Link>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={addToShortlist}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 py-3 text-sm font-semibold text-white hover:bg-stone-800"
+            >
+              <Plus className="w-4 h-4" /> Add to shortlist
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

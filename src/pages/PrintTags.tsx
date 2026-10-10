@@ -11,10 +11,7 @@ import brandLogo from "@/assets/anjani-art-logo.png";
 import { getProducts, searchProducts } from "@/services/productService";
 import { getImportBatches, getSavedBatchFilter, type ImportBatch } from "@/services/importBatchService";
 import { generateQRCode } from "@/services/qrService";
-import { formatCbm } from "@/services/catalogService";
-import {
-  BRAND_NAME, formatItemSize, formatNetWeight, formatPackingSize,
-} from "@/lib/productDisplay";
+import { BRAND_NAME } from "@/lib/productDisplay";
 
 const TAGS_PER_SHEET = 8; // 2 × 4 tags of 99 × 70 mm on A4
 const NO_BATCH = "no-batch";
@@ -32,7 +29,6 @@ const TagRow: React.FC<{ label: string; value: string | null }> = ({ label, valu
   ) : null;
 
 const Tag: React.FC<{ product: Product; qr?: string }> = ({ product, qr }) => {
-  const cbm = formatCbm(product);
   return (
     <div className="tag">
       <div className="tag-header">
@@ -46,10 +42,6 @@ const Tag: React.FC<{ product: Product; qr?: string }> = ({ product, qr }) => {
           <span>Scan for photos</span>
         </div>
         <div className="tag-details">
-          <TagRow label="Item size" value={formatItemSize(product)} />
-          <TagRow label="Packing" value={formatPackingSize(product)} />
-          <TagRow label="CBM" value={cbm === "—" ? null : cbm} />
-          <TagRow label="Net wt." value={formatNetWeight(product)} />
           <TagRow label="Finish" value={product.finish ?? null} />
         </div>
       </div>
@@ -145,11 +137,12 @@ const PrintTags: React.FC = () => {
         .tag-code { font-size: 13pt; font-weight: 700; }
         .tag-description { font-size: 8pt; font-weight: 600; line-height: 1.25; margin: 0; text-transform: uppercase;
           display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .tag-body { display: flex; gap: 3mm; flex: 1; min-height: 0; }
-        .tag-qr { width: 30mm; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5mm; }
-        .tag-qr img { width: 30mm; height: 30mm; }
-        .tag-qr span { font-size: 6pt; color: #555; }
-        .tag-details { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0.8mm; }
+        .tag-body { display: flex; justify-content: center; align-items: center; gap: 4mm; flex: 1; min-height: 0; }
+        .tag-qr { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5mm; }
+        .tag-qr img { width: 35mm; height: 35mm; }
+        .tag-qr span { font-size: 6.5pt; color: #555; }
+        .tag-details { max-width: 40mm; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0.8mm; }
+        .tag-details:empty { display: none; }
         .tag-row { display: flex; gap: 1.5mm; font-size: 7.5pt; line-height: 1.2; }
         .tag-label { width: 15mm; flex-shrink: 0; color: #555; }
         .tag-value { font-weight: 600; overflow-wrap: anywhere; }

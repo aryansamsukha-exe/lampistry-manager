@@ -43,6 +43,7 @@ export const getProducts = async (importBatchId?: string | null, withImages = tr
       price: item.price,
       cbm: item.cbm,
       description: item.description || '',
+      category: item.category ?? undefined,
       finish: item.finish ?? undefined,
       packing_length: item.packing_length ?? undefined,
       packing_width: item.packing_width ?? undefined,
@@ -71,7 +72,7 @@ export const hasAnyProducts = async (): Promise<boolean> => {
 // into databases where product-packing-details.sql has not been applied.
 const packingDetails = (product: Product) =>
   Object.fromEntries(
-    (['finish', 'packing_length', 'packing_width', 'packing_height', 'net_weight'] as const)
+    (['category', 'finish', 'packing_length', 'packing_width', 'packing_height', 'net_weight'] as const)
       .filter((key) => product[key])
       .map((key) => [key, product[key]])
   );
@@ -162,11 +163,11 @@ export const saveProducts = async (products: Product[], importBatchId?: string):
 
 export type ProductEdits = Pick<
   Product,
-  'description' | 'price' | 'length' | 'width' | 'height' | 'finish' |
+  'description' | 'price' | 'length' | 'width' | 'height' | 'category' | 'finish' |
   'packing_length' | 'packing_width' | 'packing_height' | 'net_weight'
 >;
 
-const PACKING_FIELDS = ['finish', 'packing_length', 'packing_width', 'packing_height', 'net_weight'] as const;
+const PACKING_FIELDS = ['category', 'finish', 'packing_length', 'packing_width', 'packing_height', 'net_weight'] as const;
 
 // Update the editable details of a product. Returns the saved product.
 export const updateProduct = async (product: Product, edits: ProductEdits): Promise<Product> => {
@@ -184,7 +185,7 @@ export const updateProduct = async (product: Product, edits: ProductEdits): Prom
       : product.dimensions ?? null,
     cbm: updated.cbm,
   };
-  // Packing columns only exist once product-packing-details.sql has been applied.
+  // These columns only exist once product-packing-details.sql / exhibition-phase2.sql have been applied.
   if (PACKING_FIELDS.some((key) => product[key] || edits[key])) {
     PACKING_FIELDS.forEach((key) => { changes[key] = clean(updated[key]); });
   }

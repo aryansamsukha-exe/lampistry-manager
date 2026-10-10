@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import type { Product } from "@/components/ProductCard";
 import { withCalculatedCbm } from "@/services/catalogService";
 import { extractSheetImages } from "@/services/excelImageService";
+import { categorizeProduct } from "@/lib/productCategories";
 
 type Cell = string | number | boolean | null;
 
@@ -119,6 +120,7 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
       price: parseFloat(cell(price)) || 0,
       cbm: cell(cbm) || "N/A",
       description: cell(description),
+      category: categorizeProduct(cell(description)),
       finish: cell(finish) || undefined,
       net_weight: cell(netWeight) || undefined,
       length: cell(dims.item.length) || undefined,

@@ -69,6 +69,7 @@ export type Database = {
       }
       products: {
         Row: {
+          category: string | null
           cbm: string
           created_at: string
           description: string | null
@@ -89,6 +90,7 @@ export type Database = {
           width: string | null
         }
         Insert: {
+          category?: string | null
           cbm?: string
           created_at?: string
           description?: string | null
@@ -109,6 +111,7 @@ export type Database = {
           width?: string | null
         }
         Update: {
+          category?: string | null
           cbm?: string
           created_at?: string
           description?: string | null

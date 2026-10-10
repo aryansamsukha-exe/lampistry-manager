@@ -1,5 +1,9 @@
+-- ⚠️ DEPRECATED — DO NOT RUN.
+-- This exposes every product row (including prices) to anyone on the internet.
+-- QR pages now read only published fields through get_public_product /
+-- get_public_product_by_code (see exhibition-phase2.sql). Kept for history only.
+--
 -- Allow anonymous QR scans to read products + images (SELECT only).
--- Run in Supabase Dashboard → SQL Editor → Run
 -- Keep write policies owner-only; do not grant anon INSERT/UPDATE/DELETE.
 
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;

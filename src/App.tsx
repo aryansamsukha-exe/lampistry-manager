@@ -5,17 +5,20 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
-import { ReactNode, useEffect } from "react";
-import Index from "./pages/Index";
-import Login from "./pages/Login";
-import ProductList from "./pages/ProductList";
-import ImportProducts from "./pages/ImportProducts";
-import QRCodes from "./pages/QRCodes";
-import ScanQRCode from "./pages/ScanQRCode";
+import { ReactNode, Suspense, lazy, useEffect } from "react";
 import NotFound from "./pages/NotFound";
 import PublicProductDetails from "./pages/PublicProductDetails";
-import Catalog from "./pages/Catalog";
-import PrintTags from "./pages/PrintTags";
+import Shortlist from "./pages/Shortlist";
+
+// Buyers scanning QR codes should not download the admin screens.
+const Index = lazy(() => import("./pages/Index"));
+const Login = lazy(() => import("./pages/Login"));
+const ProductList = lazy(() => import("./pages/ProductList"));
+const ImportProducts = lazy(() => import("./pages/ImportProducts"));
+const QRCodes = lazy(() => import("./pages/QRCodes"));
+const ScanQRCode = lazy(() => import("./pages/ScanQRCode"));
+const Catalog = lazy(() => import("./pages/Catalog"));
+const PrintTags = lazy(() => import("./pages/PrintTags"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,6 +59,7 @@ const AppRoutes = () => (
     <Route path="/public/product" element={<PublicProductDetails />} />
     {/* New: /public/product/:productId (UUID-based) */}
     <Route path="/public/product/:productId" element={<PublicProductDetails />} />
+    <Route path="/shortlist" element={<Shortlist />} />
     
     {/* Scanner route - accessible without auth for QR scanning */}
     <Route path="/scan" element={<ScanQRCode />} />
@@ -98,7 +102,9 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <AppRoutes />
+          <Suspense fallback={<div className="flex justify-center items-center h-screen">Loading…</div>}>
+            <AppRoutes />
+          </Suspense>
         </BrowserRouter>
       </AuthProvider>
     </TooltipProvider>

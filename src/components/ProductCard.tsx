@@ -11,7 +11,10 @@ import ImageCropper from "@/components/ImageCropper";
 import { saveProductImage, deleteProduct, updateProduct, type ProductEdits } from "@/services/productService";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PRODUCT_CATEGORIES } from "@/lib/productCategories";
+import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 export type Product = {
@@ -25,6 +28,7 @@ export type Product = {
   price: number;
   cbm: string;
   description: string;
+  category?: string;
   finish?: string;
   packing_length?: string;
   packing_width?: string;
@@ -51,6 +55,7 @@ const toEditForm = (product: Product): EditForm => ({
   length: product.length ?? "",
   width: product.width ?? "",
   height: product.height ?? "",
+  category: product.category ?? "",
   finish: product.finish ?? "",
   packing_length: product.packing_length ?? "",
   packing_width: product.packing_width ?? "",
@@ -277,6 +282,17 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
                     <Input placeholder="H" value={form.packing_height} onChange={setField("packing_height")} />
                   </div>
                 </div>
+                <div>
+                  <Label className="text-xs">Category</Label>
+                  <Select value={form.category} onValueChange={(category) => setForm((current) => ({ ...current, category }))}>
+                    <SelectTrigger><SelectValue placeholder="Choose a category" /></SelectTrigger>
+                    <SelectContent>
+                      {PRODUCT_CATEGORIES.map((category) => (
+                        <SelectItem key={category} value={category}>{category}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor={`finish-${product.id}`} className="text-xs">Finish</Label>
@@ -335,6 +351,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onDownloadQR, onImag
                 <>
                   <div className="font-medium">Packing Size:</div>
                   <div>{`${product.packing_length} × ${product.packing_width} × ${product.packing_height}`}</div>
+                </>
+              )}
+
+              {product.category && (
+                <>
+                  <div className="font-medium">Category:</div>
+                  <div>{product.category}</div>
                 </>
               )}
 

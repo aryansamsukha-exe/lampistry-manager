@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { Loader, FilePlus2, FileUp, PackageCheck, AlertCircle, Image as ImageIcon, RefreshCw } from "lucide-react";
 import FileUploader from "@/components/FileUploader";
+import UpdateFromExcel from "@/components/UpdateFromExcel";
 import { hasAnyProducts, saveProducts, saveProductImage, processImageZip } from "@/services/productService";
 import { processExcelFile } from "@/services/excelImportService";
 import { formatBytes } from "@/services/imageCompression";
@@ -394,6 +395,8 @@ const ImportProducts: React.FC = () => {
               </CardFooter>
             </Card>
           </div>
+
+          {hasExistingProducts && <UpdateFromExcel />}
 
           {importSummary && (
             <Card className="border-primary/30 bg-primary/5">

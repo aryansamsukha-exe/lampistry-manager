@@ -4,8 +4,8 @@
 //
 // Secrets (Supabase → Edge Functions → Secrets):
 //   RESEND_API_KEY   Resend API key
-//   EMAIL_FROM       e.g. "Anjani Art <sales@anjaniart.com>" (domain verified in Resend)
-//   EMAIL_REPLY_TO   optional, where buyer replies should go
+//   EMAIL_FROM       e.g. "Anjani Art <info@theanjaniart.com>" (domain verified in Resend)
+//   EMAIL_REPLY_TO   optional, where buyer replies should go, e.g. info@theanjaniart.com
 //   PUBLIC_APP_URL   e.g. https://productmanagement.vercel.app
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -16,7 +16,19 @@ const PUBLIC_APP_URL = (Deno.env.get("PUBLIC_APP_URL") ?? "https://productmanage
 const BRAND = "ANJANI ART";
 const MAX_ATTEMPTS = 5;
 
-const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+// Prefer the new secret keys (JSON dictionary); fall back to the legacy service role key.
+const serverKey = (): string => {
+  try {
+    const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}") as Record<string, string>;
+    const key = keys.default ?? Object.values(keys)[0];
+    if (key) return key;
+  } catch {
+    // Not set or not JSON; use the legacy key below.
+  }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+};
+
+const db = createClient(Deno.env.get("SUPABASE_URL")!, serverKey(), {
   auth: { persistSession: false },
 });
 

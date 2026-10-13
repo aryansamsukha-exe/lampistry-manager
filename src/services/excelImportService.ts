@@ -68,7 +68,7 @@ const hasAll = (columns: DimensionColumns) => columns.length >= 0 && columns.wid
  * header row with L/W/H (item and packing size), merged cells shared by several rows,
  * and pictures placed in the photo column.
  */
-export const processExcelFile = async (file: File): Promise<Product[]> => {
+export const processExcelFile = async (file: File, { withImages = true } = {}): Promise<Product[]> => {
   const data = await file.arrayBuffer();
   const workbook = XLSX.read(data, { type: "array" });
   const worksheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -145,7 +145,7 @@ export const processExcelFile = async (file: File): Promise<Product[]> => {
 
   if (productRows.size === 0) throw new Error("No valid products found in the Excel file.");
 
-  await attachSheetImages(data, productRows, merges, origin, photo);
+  if (withImages) await attachSheetImages(data, productRows, merges, origin, photo);
 
   return [...productRows.values()].map(withCalculatedCbm).sort((a, b) => a.sno - b.sno);
 };

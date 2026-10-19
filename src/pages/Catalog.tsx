@@ -1,10 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  ArrowLeft, BookOpen, Check, ChevronDown, Copy, Download, Filter,
-  Grid2x2, Grid3x3, ImageOff, Layers, Loader, Package, PackageOpen,
-  Printer, QrCode, Save, Search, Settings, SortAsc, Star, Trash2,
-  X, Eye, LayoutGrid, Columns2, LayoutList, Plus, AlertTriangle,
+  ArrowLeft, BookOpen, Check, Copy, ImageOff, Layers, Loader, Package, PackageOpen,
+  Printer, QrCode, Save, Search, Settings, Star, Trash2, X, Eye, Plus, AlertTriangle,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -34,17 +32,18 @@ import {
   type SavedCatalog,
 } from "@/services/catalogGenerationService";
 import { generateQRCode } from "@/services/qrService";
+import { BRAND_NAME, formatItemSize } from "@/lib/productDisplay";
+import {
+  CatalogDocument, CATALOG_LAYOUTS, waitForCatalogAssets,
+  type CatalogLayout,
+} from "@/components/catalog/CatalogDocument";
 import { toast } from "sonner";
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
-const dim = (p: Product) =>
-  p.length && p.width && p.height
-    ? `${p.length} × ${p.width} × ${p.height} cm`
-    : p.dimensions || "—";
+const dim = (p: Product) => formatItemSize(p) || "—";
 
-const fmtPrice = (n: number) =>
-  `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+const DEFAULT_CONTACT = "info@theanjaniart.com";
 
 const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -89,10 +88,7 @@ const SelectionCard: React.FC<{
 
     {/* details */}
     <div className="p-4">
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <p className="font-mono text-sm font-semibold text-stone-800 truncate">{product.product_code}</p>
-        <p className="text-sm font-semibold text-amber-700 whitespace-nowrap">{fmtPrice(product.price)}</p>
-      </div>
+      <p className="font-mono text-sm font-semibold text-stone-800 truncate mb-1">{product.product_code}</p>
       {product.description && (
         <p className="text-xs text-stone-500 mb-2 line-clamp-2 leading-relaxed">{product.description}</p>
       )}
@@ -104,72 +100,6 @@ const SelectionCard: React.FC<{
   </div>
 );
 
-// ─── catalog product card (for preview) ─────────────────────────────────────
-
-const CatalogProductCard: React.FC<{
-  product: Product;
-  qrDataUrl?: string;
-  layout: string;
-}> = ({ product, qrDataUrl, layout }) => {
-  const isLarge = layout === "1";
-  const isMedium = layout === "2";
-
-  return (
-    <div className={`catalog-product-card bg-white border border-stone-200 rounded-lg overflow-hidden
-      ${isLarge ? "flex gap-0 h-full" : "flex flex-col"}`}
-    >
-      <div className={`overflow-hidden flex-shrink-0 ${product.imageUrl ? "bg-white" : "bg-stone-50"}
-        ${isLarge ? "w-1/2 aspect-auto min-h-[400px]" : isMedium ? "aspect-[4/3]" : "aspect-[3/2]"}`}
-      >
-        {product.imageUrl ? (
-          <img
-            src={product.imageUrl}
-            alt={product.product_code}
-            className="w-full h-full object-contain"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-stone-300 flex-col gap-2">
-            <ImageOff className="w-10 h-10" />
-            <span className="text-xs">No image</span>
-          </div>
-        )}
-      </div>
-
-      <div className={`p-5 flex flex-col justify-between flex-1 ${isLarge ? "p-8" : ""}`}>
-        <div>
-          <p className="font-mono text-xs font-semibold text-stone-400 mb-1 tracking-wide">{product.product_code}</p>
-          <h3 className={`font-serif text-stone-900 font-semibold leading-tight mb-2 ${isLarge ? "text-2xl" : "text-lg"}`}>
-            {product.description || "Product details on request"}
-          </h3>
-          <div className={`grid gap-x-6 gap-y-2 text-sm mt-4 ${isLarge ? "grid-cols-2" : "grid-cols-2"}`}>
-            <div>
-              <p className="text-xs uppercase tracking-widest text-stone-400 mb-1">Dimensions</p>
-              <p className="text-stone-700 font-medium">{dim(product)}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-widest text-stone-400 mb-1">CBM</p>
-              <p className="text-stone-700 font-medium">{formatCbm(product)} m³</p>
-            </div>
-          </div>
-        </div>
-
-        <div className={`flex items-end justify-between mt-4 pt-4 border-t border-stone-100 ${isLarge ? "mt-6 pt-6" : ""}`}>
-          <div>
-            <p className="text-xs uppercase tracking-widest text-stone-400 mb-1">Price</p>
-            <p className={`font-bold text-stone-900 ${isLarge ? "text-3xl" : "text-xl"}`}>{fmtPrice(product.price)}</p>
-          </div>
-          {qrDataUrl && (
-            <div className="text-right">
-              <img src={qrDataUrl} alt="QR" className={`${isLarge ? "w-24 h-24" : "w-16 h-16"} rounded`} />
-              <p className="text-[10px] text-stone-400 mt-1">Scan for details</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // ─── QR card (for QR-card printing) ─────────────────────────────────────────
 
 const QRCard: React.FC<{
@@ -178,7 +108,7 @@ const QRCard: React.FC<{
   options: QRCardOptions;
 }> = ({ product, qrDataUrl, options }) => (
   <div className="qr-card bg-white border border-stone-200 rounded-xl flex flex-col items-center p-6 text-center gap-3 break-inside-avoid">
-    <div className="text-xs font-semibold uppercase tracking-widest text-stone-400">ProductMaster</div>
+    <div className="text-xs font-semibold uppercase tracking-widest text-stone-400">{BRAND_NAME}</div>
     {options.showImage && product.imageUrl && (
       <img src={product.imageUrl} alt={product.product_code} className="w-24 h-24 object-contain bg-white rounded-lg" />
     )}
@@ -196,9 +126,6 @@ const QRCard: React.FC<{
     {options.showDimensions && (
       <p className="text-xs text-stone-500">{dim(product)}</p>
     )}
-    {options.showPrice && (
-      <p className="text-base font-bold text-stone-900">{fmtPrice(product.price)}</p>
-    )}
     {options.showCbm && (
       <p className="text-xs text-stone-400">CBM: {formatCbm(product)}</p>
     )}
@@ -214,7 +141,6 @@ type QRCardOptions = {
   showCode: boolean;
   showDescription: boolean;
   showDimensions: boolean;
-  showPrice: boolean;
   showCbm: boolean;
 };
 
@@ -222,8 +148,13 @@ type CatalogConfig = {
   name: string;
   coverTitle: string;
   coverSubtitle: string;
-  layout: "1" | "2" | "4";
+  layout: CatalogLayout;
+  showContents: boolean;
+  contact: string;
 };
+
+const asLayout = (value?: string | null): CatalogLayout =>
+  CATALOG_LAYOUTS.some((l) => l.value === value) ? (value as CatalogLayout) : "2";
 
 type PrintMode = "catalog" | "qr-cards";
 
@@ -244,7 +175,7 @@ const Catalog: React.FC = () => {
   const [selectedBatchId, setSelectedBatchId] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"code" | "price-asc" | "price-desc" | "newest">("code");
+  const [sortBy, setSortBy] = useState<"code" | "newest">("code");
   const [filterImage, setFilterImage] = useState<"all" | "with" | "without">("all");
 
   // ui state
@@ -262,13 +193,16 @@ const Catalog: React.FC = () => {
     coverTitle: "Product Collection",
     coverSubtitle: new Date().getFullYear().toString(),
     layout: "2",
+    showContents: true,
+    contact: DEFAULT_CONTACT,
   });
+  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
 
   // QR card options
   const [qrCardLayout, setQrCardLayout] = useState<"1" | "4" | "6" | "8">("4");
   const [qrOptions, setQrOptions] = useState<QRCardOptions>({
     showImage: true, showQR: true, showCode: true,
-    showDescription: true, showDimensions: true, showPrice: true, showCbm: true,
+    showDescription: true, showDimensions: true, showCbm: true,
   });
 
   // generated QR codes (lazy, only for selected)
@@ -321,8 +255,6 @@ const Catalog: React.FC = () => {
     if (query.trim()) list = searchProducts(list, query);
 
     list = [...list].sort((a, b) => {
-      if (sortBy === "price-asc") return a.price - b.price;
-      if (sortBy === "price-desc") return b.price - a.price;
       if (sortBy === "newest")
         return new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
       return a.product_code.localeCompare(b.product_code);
@@ -434,12 +366,13 @@ const Catalog: React.FC = () => {
     try {
       const productIds = await getCatalogProductIds(cat.id);
       setSelectedIds(new Set(productIds));
-      setConfig({
+      setConfig((c) => ({
+        ...c,
         name: cat.name,
         coverTitle: cat.cover_title ?? "Product Collection",
         coverSubtitle: cat.cover_subtitle ?? new Date().getFullYear().toString(),
-        layout: (cat.layout as CatalogConfig["layout"]) || "2",
-      });
+        layout: asLayout(cat.layout),
+      }));
       if (cat.import_batch_id) setSelectedBatchId(cat.import_batch_id);
       setEditingCatalogId(cat.id);
       setActiveTab("select");
@@ -480,14 +413,24 @@ const Catalog: React.FC = () => {
 
   // ── print ──────────────────────────────────────────────────────────────────
 
-  const handlePrint = () => window.print();
+  const handlePrint = async () => {
+    if (activeTab !== "preview") {
+      window.print();
+      return;
+    }
+    setIsPreparingPrint(true);
+    try {
+      await waitForCatalogAssets(printAreaRef.current);
+    } finally {
+      setIsPreparingPrint(false);
+    }
+    window.print();
+  };
 
   // ── render ─────────────────────────────────────────────────────────────────
 
   if (loadingSession || !isAuthenticated) return null;
 
-  // Columns per row depending on layout
-  const gridCols = config.layout === "1" ? 1 : config.layout === "2" ? 2 : 4;
   const qrCardsPerRow = qrCardLayout === "1" ? 1 : qrCardLayout === "4" ? 2 : qrCardLayout === "6" ? 3 : 4;
 
   return (
@@ -503,15 +446,7 @@ const Catalog: React.FC = () => {
             padding: 0 !important;
             margin: 0 !important;
           }
-          .print-page {
-            page-break-after: always;
-            break-after: page;
-          }
-          .print-page:last-child {
-            page-break-after: avoid;
-            break-after: avoid;
-          }
-          .catalog-product-card, .qr-card {
+          .qr-card {
             break-inside: avoid;
             page-break-inside: avoid;
           }
@@ -527,7 +462,7 @@ const Catalog: React.FC = () => {
         <Navbar />
       </div>
 
-      <main className="mx-auto max-w-7xl px-4 sm:px-8 py-6">
+      <main className="mx-auto max-w-7xl px-4 sm:px-8 py-6 print:p-0 print:max-w-none">
         {/* ── top bar ───────────────────────────────────────────────────── */}
         <div className="no-print mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -551,8 +486,11 @@ const Catalog: React.FC = () => {
                 >
                   <Save className="w-4 h-4 mr-1" /> Save Catalog
                 </Button>
-                <Button size="sm" onClick={handlePrint}>
-                  <Printer className="w-4 h-4 mr-1" /> Print / PDF
+                <Button size="sm" onClick={handlePrint} disabled={isPreparingPrint || isGeneratingQR}>
+                  {isPreparingPrint || isGeneratingQR
+                    ? <Loader className="w-4 h-4 mr-1 animate-spin" />
+                    : <Printer className="w-4 h-4 mr-1" />}
+                  {isPreparingPrint ? "Loading images…" : "Print / PDF"}
                 </Button>
               </>
             )}
@@ -560,8 +498,8 @@ const Catalog: React.FC = () => {
         </div>
 
         {/* ── tabs ─────────────────────────────────────────────────────── */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="no-print">
-          <TabsList className="mb-6 bg-white border border-stone-200 h-10">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+          <TabsList className="no-print mb-6 bg-white border border-stone-200 h-10">
             <TabsTrigger value="select" className="gap-1.5">
               <Package className="w-3.5 h-3.5" /> Select Products
             </TabsTrigger>
@@ -579,7 +517,7 @@ const Catalog: React.FC = () => {
           {/* ═══════════════════════════════════════════════════════════════
               TAB 1 — PRODUCT SELECTION
           ═══════════════════════════════════════════════════════════════ */}
-          <TabsContent value="select">
+          <TabsContent value="select" className="no-print">
             {isLoading ? (
               <div className="flex justify-center items-center py-32">
                 <Loader className="w-8 h-8 animate-spin text-stone-400" />
@@ -630,8 +568,6 @@ const Catalog: React.FC = () => {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="code">Product Code</SelectItem>
-                          <SelectItem value="price-asc">Price: Low → High</SelectItem>
-                          <SelectItem value="price-desc">Price: High → Low</SelectItem>
                           <SelectItem value="newest">Newest First</SelectItem>
                         </SelectContent>
                       </Select>
@@ -735,7 +671,7 @@ const Catalog: React.FC = () => {
           {/* ═══════════════════════════════════════════════════════════════
               TAB 2 — CATALOG PREVIEW
           ═══════════════════════════════════════════════════════════════ */}
-          <TabsContent value="preview">
+          <TabsContent value="preview" className="print:m-0">
             {selectedProducts.length === 0 ? (
               <div className="rounded-xl border border-dashed border-stone-300 py-24 text-center">
                 <BookOpen className="w-12 h-12 text-stone-300 mx-auto mb-3" />
@@ -744,89 +680,56 @@ const Catalog: React.FC = () => {
               </div>
             ) : (
               <>
-                {/* layout picker (no-print) */}
-                <div className="no-print mb-6 flex items-center gap-3 flex-wrap">
-                  <p className="text-sm font-medium text-stone-600">Layout:</p>
-                  {(["1", "2", "4"] as CatalogConfig["layout"][]).map((l) => (
-                    <Button
-                      key={l}
-                      variant={config.layout === l ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setConfig((c) => ({ ...c, layout: l }))}
-                      className="gap-1.5"
-                    >
-                      {l === "1" ? <Columns2 className="w-3.5 h-3.5" /> : l === "2" ? <Grid2x2 className="w-3.5 h-3.5" /> : <Grid3x3 className="w-3.5 h-3.5" />}
-                      {l === "1" ? "1 / page" : l === "2" ? "2 / page" : "4 / page"}
-                    </Button>
-                  ))}
+                {/* catalog options (no-print) */}
+                <div className="no-print mb-6 rounded-xl border border-stone-200 bg-white p-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-stone-600">Layout:</p>
+                    {CATALOG_LAYOUTS.map((l) => (
+                      <Button
+                        key={l.value}
+                        variant={config.layout === l.value ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setConfig((c) => ({ ...c, layout: l.value }))}
+                      >
+                        {l.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-stone-600 cursor-pointer">
+                    <Checkbox
+                      checked={config.showContents}
+                      onCheckedChange={(v) => setConfig((c) => ({ ...c, showContents: v === true }))}
+                    />
+                    Contents page
+                  </label>
+                  <Button variant="ghost" size="sm" onClick={() => setShowConfigDialog(true)}>
+                    <Settings className="w-3.5 h-3.5 mr-1" /> Cover &amp; contact
+                  </Button>
                   {isGeneratingQR && (
                     <span className="text-xs text-stone-400 flex items-center gap-1">
                       <Loader className="w-3 h-3 animate-spin" /> Generating QR codes…
                     </span>
                   )}
+                  {missingImageCount > 0 && (
+                    <span className="text-xs text-amber-700 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> {missingImageCount} without image
+                    </span>
+                  )}
                 </div>
 
                 {/* ── printable area ──────────────────────────────────────── */}
-                <div ref={printAreaRef} className="catalog-print-area space-y-0">
-                  {/* cover page */}
-                  <div className="print-page bg-stone-900 text-stone-50 rounded-2xl overflow-hidden min-h-[500px] flex flex-col items-center justify-center text-center p-12 relative">
-                    {/* cover hero image (first product with image) */}
-                    {(() => {
-                      const hero = selectedProducts.find((p) => p.imageUrl);
-                      return hero?.imageUrl ? (
-                        <div className="absolute inset-0 opacity-20">
-                          <img src={hero.imageUrl} alt="" className="w-full h-full object-cover" />
-                        </div>
-                      ) : null;
-                    })()}
-                    <div className="relative z-10 space-y-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-300">
-                        Product Collection
-                      </p>
-                      <h1 className="font-serif text-5xl sm:text-6xl font-bold leading-tight max-w-2xl">
-                        {config.coverTitle || "Product Collection"}
-                      </h1>
-                      {config.coverSubtitle && (
-                        <p className="text-stone-300 text-xl">{config.coverSubtitle}</p>
-                      )}
-                      <p className="text-stone-400 text-sm mt-6">
-                        {selectedProducts.length} products · Detailed specifications
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* product pages */}
-                  {Array.from(
-                    { length: Math.ceil(selectedProducts.length / gridCols) },
-                    (_, pageIndex) => {
-                      const pageProducts = selectedProducts.slice(
-                        pageIndex * gridCols,
-                        (pageIndex + 1) * gridCols
-                      );
-                      return (
-                        <div
-                          key={pageIndex}
-                          className={`print-page mt-6 grid gap-6 ${
-                            gridCols === 1 ? "grid-cols-1" : gridCols === 2 ? "grid-cols-2" : "grid-cols-2"
-                          }`}
-                        >
-                          {pageProducts.map((p) => (
-                            <CatalogProductCard
-                              key={p.id}
-                              product={p}
-                              qrDataUrl={qrMap.get(p.id)}
-                              layout={config.layout}
-                            />
-                          ))}
-                        </div>
-                      );
-                    }
-                  )}
-
-                  {/* footer */}
-                  <p className="no-print text-center text-xs text-stone-400 uppercase tracking-widest mt-8 pt-6 border-t border-stone-200">
-                    ProductMaster · {new Date().getFullYear()}
-                  </p>
+                <div ref={printAreaRef} className="overflow-x-auto pb-4 print:overflow-visible print:pb-0">
+                  <CatalogDocument
+                    products={selectedProducts}
+                    qrCodes={qrMap}
+                    options={{
+                      title: config.coverTitle,
+                      subtitle: config.coverSubtitle,
+                      layout: config.layout,
+                      showContents: config.showContents,
+                      contact: config.contact,
+                    }}
+                  />
                 </div>
               </>
             )}
@@ -916,7 +819,7 @@ const Catalog: React.FC = () => {
           {/* ═══════════════════════════════════════════════════════════════
               TAB 4 — SAVED CATALOGS
           ═══════════════════════════════════════════════════════════════ */}
-          <TabsContent value="saved">
+          <TabsContent value="saved" className="no-print">
             {savedCatalogs.length === 0 ? (
               <div className="rounded-xl border border-dashed border-stone-300 py-24 text-center">
                 <Layers className="w-12 h-12 text-stone-300 mx-auto mb-3" />
@@ -1007,20 +910,29 @@ const Catalog: React.FC = () => {
             <div>
               <Label className="text-sm font-medium">Products per page</Label>
               <div className="flex gap-2 mt-1.5">
-                {(["1", "2", "4"] as CatalogConfig["layout"][]).map((l) => (
+                {CATALOG_LAYOUTS.map((l) => (
                   <Button
-                    key={l}
-                    variant={config.layout === l ? "default" : "outline"}
+                    key={l.value}
+                    variant={config.layout === l.value ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setConfig((c) => ({ ...c, layout: l }))}
+                    onClick={() => setConfig((c) => ({ ...c, layout: l.value }))}
                     className="flex-1"
                   >
-                    {l} / page
+                    {l.value} / page
                   </Button>
                 ))}
               </div>
             </div>
-          </div>
+            <div>
+              <Label className="text-sm font-medium">Contact line</Label>
+              <Input
+                value={config.contact}
+                onChange={(e) => setConfig((c) => ({ ...c, contact: e.target.value }))}
+                placeholder={DEFAULT_CONTACT}
+                className="mt-1.5"
+              />
+              <p className="text-xs text-stone-500 mt-1">Shown on the cover, back page and page footers.</p>
+            </div>          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowConfigDialog(false)}>Cancel</Button>
             <Button

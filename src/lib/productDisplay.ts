@@ -18,3 +18,14 @@ export const formatPackingSize = (p: PackingSource) => joinSize(p.packing_length
 export const formatPrice = (p: Pick<Product, "price">) => (p.price > 0 ? `$${p.price.toFixed(2)}` : null);
 
 export const formatNetWeight = (p: Pick<Product, "net_weight">) => (p.net_weight ? `${p.net_weight} kg` : null);
+
+const SMALL_WORDS = new Set(["a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with"]);
+
+/** "WOODEN FLOOR LAMP WITH SHADE" → "Wooden Floor Lamp with Shade". */
+export const toTitleCase = (text: string) =>
+  text
+    .trim()
+    .toLowerCase()
+    .split(/(\s+)/)
+    .map((word, i) => (i > 0 && SMALL_WORDS.has(word) ? word : word.charAt(0).toUpperCase() + word.slice(1)))
+    .join("");

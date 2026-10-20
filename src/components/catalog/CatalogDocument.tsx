@@ -1,7 +1,7 @@
 import React from "react";
 import type { Product } from "@/components/ProductCard";
 import brandLogo from "@/assets/anjani-art-logo.png";
-import { BRAND_NAME, formatItemSize, formatNetWeight, formatPackingSize } from "@/lib/productDisplay";
+import { BRAND_NAME, formatItemSize, formatNetWeight, formatPackingSize, toTitleCase } from "@/lib/productDisplay";
 import { formatCbm } from "@/services/catalogService";
 
 export type CatalogLayout = "1" | "2" | "4" | "6";
@@ -22,20 +22,11 @@ export type CatalogDocumentOptions = {
 };
 
 const CONTENTS_PER_PAGE = 30;
-const SMALL_WORDS = new Set(["a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with"]);
 
 const chunk = <T,>(items: T[], size: number) =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, i * size + size));
 
-/** Descriptions are imported in capitals ("WOODEN FLOOR LAMP"); catalogues read better in title case. */
-const titleCase = (text: string) =>
-  text
-    .toLowerCase()
-    .split(/(\s+)/)
-    .map((word, i) => (i > 0 && SMALL_WORDS.has(word) ? word : word.charAt(0).toUpperCase() + word.slice(1)))
-    .join("");
-
-const productTitle = (p: Product) => (p.description?.trim() ? titleCase(p.description.trim()) : p.product_code);
+const productTitle = (p: Product) => (p.description?.trim() ? toTitleCase(p.description) : p.product_code);
 
 const cbmText = (p: Product) => {
   const cbm = formatCbm(p);

@@ -67,8 +67,12 @@ const hasAll = (columns: DimensionColumns) => columns.length >= 0 && columns.wid
  * Reads products from the first worksheet. Handles title rows above the table, a second
  * header row with L/W/H (item and packing size), merged cells shared by several rows,
  * and pictures placed in the photo column.
+ * With requireCode: false, rows that have a description but no item code are kept too.
  */
-export const processExcelFile = async (file: File, { withImages = true } = {}): Promise<Product[]> => {
+export const processExcelFile = async (
+  file: File,
+  { withImages = true, requireCode = true } = {}
+): Promise<Product[]> => {
   const data = await file.arrayBuffer();
   const workbook = XLSX.read(data, { type: "array" });
   const worksheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -107,10 +111,11 @@ export const processExcelFile = async (file: File, { withImages = true } = {}): 
 
   for (let i = firstDataRow; i < rows.length; i++) {
     const row = rows[i];
-    const productCode = text(row?.[code]);
-    if (!row || !productCode) continue;
-
+    if (!row) continue;
     const cell = (col: number) => (col >= 0 ? text(row[col]) : "");
+    const productCode = text(row[code]);
+    if (!productCode && (requireCode || !cell(description))) continue;
+
     const parsedSno = parseInt(cell(sno), 10);
 
     const product: Product = {

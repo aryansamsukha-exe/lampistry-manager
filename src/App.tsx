@@ -19,6 +19,8 @@ const QRCodes = lazy(() => import("./pages/QRCodes"));
 const ScanQRCode = lazy(() => import("./pages/ScanQRCode"));
 const Catalog = lazy(() => import("./pages/Catalog"));
 const PrintTags = lazy(() => import("./pages/PrintTags"));
+const Showroom = lazy(() => import("./pages/Showroom"));
+const ShowroomCollection = lazy(() => import("./pages/ShowroomCollection"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,6 +90,16 @@ const AppRoutes = () => (
     <Route path="/print-tags" element={
       <SecureRoute>
         <PrintTags />
+      </SecureRoute>
+    } />
+    <Route path="/showroom" element={
+      <SecureRoute>
+        <Showroom />
+      </SecureRoute>
+    } />
+    <Route path="/showroom/:collectionId" element={
+      <SecureRoute>
+        <ShowroomCollection />
       </SecureRoute>
     } />
     

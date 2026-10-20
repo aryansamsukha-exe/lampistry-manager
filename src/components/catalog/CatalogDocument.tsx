@@ -218,7 +218,7 @@ const CATALOG_CSS = `
 }
 .cat-doc *, .cat-doc *::before, .cat-doc *::after { box-sizing: border-box; }
 .cat-page {
-  page: catalog; width: 210mm; height: 297mm; padding: 13mm 14mm 10mm; background: #fff;
+  width: 210mm; height: 297mm; padding: 13mm 14mm 10mm; background: #fff;
   display: flex; flex-direction: column; overflow: hidden; position: relative;
   margin: 0 auto 10mm; box-shadow: 0 2px 14px rgba(28, 25, 23, .12);
 }
@@ -314,7 +314,8 @@ const CATALOG_CSS = `
 .cat-thumb-page { margin: 0; font-size: 6pt; color: var(--faint); }
 
 @media print {
-  @page catalog { size: A4; margin: 0; }
+  @page { size: A4; margin: 0; }
+  html, body, #root { height: auto !important; min-height: 0 !important; }
   .cat-page { margin: 0; box-shadow: none; break-after: page; page-break-after: always; }
   .cat-page:last-child { break-after: auto; page-break-after: auto; }
   .cat-doc, .cat-doc * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }

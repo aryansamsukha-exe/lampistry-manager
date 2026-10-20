@@ -147,7 +147,7 @@ const ShowroomCollection: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-stone-100">
+    <div className="min-h-screen bg-stone-100 print:min-h-0 print:bg-white">
       <style>{`@media print { html, body { background: white !important; } .no-print { display: none !important; } }`}</style>
       <div className="no-print"><Navbar /></div>
 

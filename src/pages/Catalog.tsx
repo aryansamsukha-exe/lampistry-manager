@@ -434,7 +434,7 @@ const Catalog: React.FC = () => {
   const qrCardsPerRow = qrCardLayout === "1" ? 1 : qrCardLayout === "4" ? 2 : qrCardLayout === "6" ? 3 : 4;
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900">
+    <div className="min-h-screen bg-stone-50 text-stone-900 print:min-h-0 print:bg-white">
       {/* ── print styles (injected as style tag) ──────────────────────────── */}
       <style>{`
         @media print {

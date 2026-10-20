@@ -51,7 +51,7 @@ const SHOWROOM_CARD_CSS = `
 .sr-doc { --ink: #1c1917; --muted: #78716c; --faint: #a8a29e; --accent: #a8916b; --line: #e7e1d8; color: var(--ink); font-family: Inter, system-ui, sans-serif; }
 .sr-doc *, .sr-doc *::before, .sr-doc *::after { box-sizing: border-box; }
 .sr-sheet {
-  page: showroom; width: 210mm; height: 297mm; padding: 12.5mm 6mm; background: #fff;
+  width: 210mm; height: 297mm; padding: 12.5mm 6mm; background: #fff;
   display: grid; grid-template-columns: repeat(2, 99mm); grid-template-rows: repeat(4, 68mm); align-content: start;
   margin: 0 auto 10mm; box-shadow: 0 2px 12px rgba(28, 25, 23, .14);
 }
@@ -73,10 +73,14 @@ const SHOWROOM_CARD_CSS = `
 .sr-specs { margin: 0; display: flex; flex-direction: column; gap: 1.4mm; }
 .sr-specs dt { font-size: 5.5pt; letter-spacing: .2em; text-transform: uppercase; color: var(--faint); }
 .sr-specs dd { margin: .3mm 0 0; font-size: 7.5pt; font-weight: 500; color: #44403c; overflow-wrap: anywhere; }
-.sr-price { margin: 0; font-family: "Cormorant Garamond", Georgia, serif; font-weight: 700; font-size: 24pt; line-height: 1; color: var(--ink); }
+.sr-price {
+  margin: 0; font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 19pt; line-height: 1;
+  letter-spacing: -.01em; font-variant-numeric: lining-nums tabular-nums; color: var(--ink);
+}
 
 @media print {
-  @page showroom { size: A4; margin: 0; }
+  @page { size: A4; margin: 0; }
+  html, body, #root { height: auto !important; min-height: 0 !important; }
   .sr-sheet { margin: 0; box-shadow: none; break-after: page; page-break-after: always; }
   .sr-sheet:last-child { break-after: auto; page-break-after: auto; }
   .sr-doc, .sr-doc * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }

@@ -125,16 +125,76 @@ export const updateShowroomItem = async (id: string, edits: ShowroomItemEdits) =
   return data as ShowroomItem;
 };
 
+/** Removes a photo file once no showroom item uses it any more (photos can be shared by several rows). */
+const removePhotoIfUnused = async (url: string | null) => {
+  if (!url) return;
+  const { count } = await db
+    .from("showroom_items")
+    .select("id", { count: "exact", head: true })
+    .eq("image_url", url);
+  if (!count) await removeImageFiles([url]);
+};
+
+const uploadPhoto = async (code: string | null | undefined, dataUrl: string) =>
+  uploadImageFile(await currentUserId(), `showroom-${code?.trim() || "item"}`, dataUrl);
+
+/** Replaces one item's photo. Other items that shared the old photo keep it. */
+export const setShowroomItemPhoto = async (item: ShowroomItem, dataUrl: string) => {
+  const url = await uploadPhoto(item.product_code, dataUrl);
+  const { data, error } = await db
+    .from("showroom_items")
+    .update({ image_url: url, updated_at: new Date().toISOString() })
+    .eq("id", item.id)
+    .select("*")
+    .single();
+  if (error) {
+    await removeImageFiles([url]);
+    throw error;
+  }
+  await removePhotoIfUnused(item.image_url);
+  return data as ShowroomItem;
+};
+
+/** Adds a product that was not in the imported sheet, at the end of the collection. */
+export const addShowroomItem = async (collectionId: string, fields: ShowroomItemEdits, photoDataUrl?: string | null) => {
+  const userId = await currentUserId();
+  const { data: last } = await db
+    .from("showroom_items")
+    .select("sort_order")
+    .eq("collection_id", collectionId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const imageUrl = photoDataUrl ? await uploadPhoto(fields.product_code, photoDataUrl) : null;
+  const { data, error } = await db
+    .from("showroom_items")
+    .insert({
+      collection_id: collectionId,
+      user_id: userId,
+      sort_order: (last?.sort_order ?? -1) + 1,
+      product_code: orNull(fields.product_code),
+      description: orNull(fields.description),
+      finish: orNull(fields.finish),
+      length: orNull(fields.length),
+      width: orNull(fields.width),
+      height: orNull(fields.height),
+      price: typeof fields.price === "number" && fields.price > 0 ? fields.price : null,
+      image_url: imageUrl,
+    })
+    .select("*")
+    .single();
+  if (error) {
+    if (imageUrl) await removeImageFiles([imageUrl]);
+    throw error;
+  }
+  return data as ShowroomItem;
+};
+
 /** Deletes an item, and its photo unless another item in the collection still uses it. */
 export const deleteShowroomItem = async (item: ShowroomItem) => {
   const { error } = await db.from("showroom_items").delete().eq("id", item.id);
   if (error) throw error;
-  if (!item.image_url) return;
-  const { count } = await db
-    .from("showroom_items")
-    .select("id", { count: "exact", head: true })
-    .eq("image_url", item.image_url);
-  if (!count) await removeImageFiles([item.image_url]);
+  await removePhotoIfUnused(item.image_url);
 };
 
 export const deleteShowroomCollection = async (id: string) => {

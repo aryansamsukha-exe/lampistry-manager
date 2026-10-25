@@ -4,7 +4,15 @@ import { compressImage, type CropFractions as Crop } from "@/services/imageCompr
 /** A picture placed on the first worksheet, rendered as a JPEG data URL. */
 export type SheetImage = { row: number; col: number; dataUrl: string };
 
-type Anchor = { row: number; col: number; mediaPath: string; crop: Crop };
+type Anchor = { row: number; col: number; mediaPath: string; crop: Crop; quarterTurns: number };
+
+const ROTATION_UNITS_PER_QUARTER_TURN = 5400000; // DrawingML angles are 60000ths of a degree
+
+/** Excel can rotate a picture on the sheet without changing the file; snap that to quarter turns. */
+const readQuarterTurns = (pic: Element) => {
+  const rot = Number(byLocalName(pic, "xfrm")[0]?.getAttribute("rot") ?? 0);
+  return Number.isFinite(rot) ? Math.round(rot / ROTATION_UNITS_PER_QUARTER_TURN) % 4 : 0;
+};
 
 const MIME_TYPES: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", bmp: "image/bmp", webp: "image/webp",
@@ -80,6 +88,7 @@ const readAnchors = async (zip: JSZip, drawingPath: string): Promise<Anchor[]> =
       col: Number(byLocalName(from, "col")[0]?.textContent ?? -1),
       mediaPath,
       crop: readCrop(pic),
+      quarterTurns: readQuarterTurns(pic),
     }];
   });
 };
@@ -104,7 +113,7 @@ export const extractSheetImages = async (data: ArrayBuffer): Promise<SheetImage[
       if (!media) continue;
       const extension = anchor.mediaPath.split(".").pop()?.toLowerCase() ?? "";
       const blob = new Blob([await media.async("arraybuffer")], { type: MIME_TYPES[extension] ?? "" });
-      const dataUrl = await compressImage(blob, anchor.crop);
+      const dataUrl = await compressImage(blob, anchor.crop, anchor.quarterTurns);
       if (dataUrl) images.push({ row: anchor.row, col: anchor.col, dataUrl });
     }
   }

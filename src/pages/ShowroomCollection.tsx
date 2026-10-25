@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, ImageOff, Loader, Pencil, Printer, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, ImageOff, ImagePlus, Loader, Pencil, Plus, Printer, RotateCcw, RotateCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -13,12 +13,18 @@ import {
 import { CARDS_PER_SHEET, ShowroomCardSheets } from "@/components/showroom/ShowroomCardSheets";
 import { waitForCatalogAssets } from "@/components/catalog/CatalogDocument";
 import { cardTitle, formatCardPrice, formatCardSize } from "@/lib/showroomCard";
+import { compressImage, rotateImage } from "@/services/imageCompression";
 import {
-  deleteShowroomItem, getShowroomCollection, updateShowroomItem,
+  addShowroomItem, deleteShowroomItem, getShowroomCollection, setShowroomItemPhoto, updateShowroomItem,
   type ShowroomItem,
 } from "@/services/showroomService";
 
 type EditForm = { product_code: string; description: string; finish: string; length: string; width: string; height: string; price: string };
+
+const EMPTY_FORM: EditForm = { product_code: "", description: "", finish: "", length: "", width: "", height: "", price: "" };
+
+/** The item being edited, or "new" when adding a product that was not in the sheet. */
+type EditTarget = ShowroomItem | "new" | null;
 
 const toForm = (item: ShowroomItem): EditForm => ({
   product_code: item.product_code ?? "",
@@ -39,8 +45,12 @@ const ShowroomCollection: React.FC = () => {
   const [status, setStatus] = useState<"loading" | "ready" | "missing">("loading");
   const [query, setQuery] = useState("");
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [editing, setEditing] = useState<ShowroomItem | null>(null);
+  const [editing, setEditing] = useState<EditTarget>(null);
   const [form, setForm] = useState<EditForm | null>(null);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [photoChanged, setPhotoChanged] = useState(false);
+  const [isPhotoBusy, setIsPhotoBusy] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
 
@@ -85,9 +95,43 @@ const ShowroomCollection: React.FC = () => {
       return next;
     });
 
-  const openEdit = (item: ShowroomItem) => { setEditing(item); setForm(toForm(item)); };
+  const openEditor = (target: ShowroomItem | "new") => {
+    setEditing(target);
+    setForm(target === "new" ? EMPTY_FORM : toForm(target));
+    setPhoto(target === "new" ? null : target.image_url);
+    setPhotoChanged(false);
+  };
   const setField = (key: keyof EditForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => (f ? { ...f, [key]: e.target.value } : f));
+
+  const handleRotate = async (quarterTurns: number) => {
+    if (!photo) return;
+    setIsPhotoBusy(true);
+    try {
+      setPhoto(await rotateImage(photo, quarterTurns));
+      setPhotoChanged(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not rotate the photo.");
+    } finally {
+      setIsPhotoBusy(false);
+    }
+  };
+
+  const handlePhotoFile = async (file: File | undefined) => {
+    if (!file) return;
+    setIsPhotoBusy(true);
+    try {
+      const dataUrl = await compressImage(file);
+      if (!dataUrl) throw new Error("This file could not be read. Use a JPG or PNG photo.");
+      setPhoto(dataUrl);
+      setPhotoChanged(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not load the photo.");
+    } finally {
+      setIsPhotoBusy(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  };
 
   const handleSave = async () => {
     if (!editing || !form) return;
@@ -96,12 +140,23 @@ const ShowroomCollection: React.FC = () => {
       toast.warning("Enter a valid price, or leave it empty.");
       return;
     }
+    if (editing === "new" && !form.description.trim() && !form.product_code.trim()) {
+      toast.warning("Enter a description or an item code.");
+      return;
+    }
     setIsSaving(true);
     try {
-      const updated = await updateShowroomItem(editing.id, { ...form, price });
-      setItems((list) => list.map((i) => (i.id === updated.id ? updated : i)));
+      if (editing === "new") {
+        const added = await addShowroomItem(collectionId, { ...form, price }, photoChanged ? photo : null);
+        setItems((list) => [...list, added]);
+        toast.success("Product added.");
+      } else {
+        let updated = await updateShowroomItem(editing.id, { ...form, price });
+        if (photoChanged && photo) updated = await setShowroomItemPhoto(updated, photo);
+        setItems((list) => list.map((i) => (i.id === updated.id ? updated : i)));
+        toast.success("Saved.");
+      }
       setEditing(null);
-      toast.success("Saved.");
     } catch (err) {
       console.error(err);
       toast.error("Could not save the changes.");
@@ -178,9 +233,14 @@ const ShowroomCollection: React.FC = () => {
                 />
                 Print all
               </label>
-              <div className="relative sm:w-72">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input className="pl-9 h-9" placeholder="Search code, description, finish…" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <div className="flex items-center gap-2">
+                <div className="relative sm:w-72">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input className="pl-9 h-9" placeholder="Search code, description, finish…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                </div>
+                <Button size="sm" variant="outline" className="h-9" onClick={() => openEditor("new")}>
+                  <Plus className="h-4 w-4 mr-1" /> Add product
+                </Button>
               </div>
             </div>
             <div className="max-h-96 overflow-y-auto divide-y">
@@ -190,9 +250,14 @@ const ShowroomCollection: React.FC = () => {
                 return (
                   <div key={item.id} className="flex items-center gap-3 px-4 py-2 text-sm">
                     <Checkbox checked={!excluded.has(item.id)} onCheckedChange={() => toggle(item.id)} aria-label="Print this card" />
-                    <div className="h-12 w-12 flex-shrink-0 rounded border bg-white overflow-hidden flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={() => openEditor(item)}
+                      title="Change or rotate photo"
+                      className="h-12 w-12 flex-shrink-0 rounded border bg-white overflow-hidden flex items-center justify-center hover:ring-2 hover:ring-primary/40"
+                    >
                       {item.image_url ? <img src={item.image_url} alt="" className="h-full w-full object-contain" /> : <ImageOff className="h-4 w-4 text-stone-300" />}
-                    </div>
+                    </button>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium truncate">
                         {item.product_code && <span className="font-mono mr-2">{item.product_code}</span>}
@@ -203,7 +268,7 @@ const ShowroomCollection: React.FC = () => {
                       </p>
                     </div>
                     <span className={`w-16 text-right font-semibold ${price ? "" : "text-amber-600 font-normal"}`}>{price ?? "No price"}</span>
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(item)} aria-label="Edit"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => openEditor(item)} aria-label="Edit"><Pencil className="h-4 w-4" /></Button>
                     <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => handleDelete(item)} aria-label="Remove">
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -226,11 +291,38 @@ const ShowroomCollection: React.FC = () => {
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit card</DialogTitle>
+            <DialogTitle>{editing === "new" ? "Add product" : "Edit card"}</DialogTitle>
             <DialogDescription>Changes apply only to this showroom collection.</DialogDescription>
           </DialogHeader>
           {form && (
             <div className="grid grid-cols-3 gap-3 py-2">
+              <div className="col-span-3 flex gap-3 items-center">
+                <div className="h-28 w-28 flex-shrink-0 rounded border bg-white overflow-hidden flex items-center justify-center">
+                  {isPhotoBusy ? <Loader className="h-5 w-5 animate-spin text-stone-400" />
+                    : photo ? <img src={photo} alt="" className="h-full w-full object-contain" />
+                    : <ImageOff className="h-6 w-6 text-stone-300" />}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" variant="outline" disabled={!photo || isPhotoBusy} onClick={() => handleRotate(-1)}>
+                      <RotateCcw className="h-4 w-4 mr-1" /> Left
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={!photo || isPhotoBusy} onClick={() => handleRotate(1)}>
+                      <RotateCw className="h-4 w-4 mr-1" /> Right
+                    </Button>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" disabled={isPhotoBusy} onClick={() => photoInputRef.current?.click()}>
+                    <ImagePlus className="h-4 w-4 mr-1" /> {photo ? "Change photo" : "Add photo"}
+                  </Button>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => handlePhotoFile(e.target.files?.[0])}
+                  />
+                </div>
+              </div>
               <div className="col-span-3">
                 <Label>Description</Label>
                 <Input className="mt-1" value={form.description} onChange={setField("description")} />
@@ -254,7 +346,7 @@ const ShowroomCollection: React.FC = () => {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button onClick={handleSave} disabled={isSaving || isPhotoBusy}>
               {isSaving && <Loader className="h-4 w-4 mr-2 animate-spin" />} Save
             </Button>
           </DialogFooter>
